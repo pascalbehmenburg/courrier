@@ -1,0 +1,21 @@
+# Mailster Configuration File
+# Copy this file to config.toml and fill in your account details
+
+# First IMAP server (e.g., iCloud)
+[[servers]]
+host = "imap.mail.me.com"
+port = 993  # Optional, defaults to 993 if not specified
+accounts = [
+  { email = "your@mail.com", username = "mailer", password = "your-app-specific-password" },
+  { email = "other@mail.com", username = "mailer", password = "your-app-specific-password" }
+]
+
+# Second IMAP server (e.g., Gmail)
+[[servers]]
+host = "imap.gmail.com"
+port = 993
+accounts = [
+  { email = "your-email@gmail.com", username = "your-email@gmail.com", password = "your-app-specific-password" }
+]
+
+# You can add more servers and accounts as needed
