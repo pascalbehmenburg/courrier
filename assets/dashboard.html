@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mailster Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .server-section {
+            margin-bottom: 20px;
+        }
+
+        .server-header {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+        }
+
+        .account-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .account-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-running {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        .status-idle {
+            background: #6c757d;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .fetch-status {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .format-bytes {
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📧 Mailster Dashboard</h1>
+            <p class="subtitle">Email fetching and management system</p>
+        </div>
+
+        <div class="card">
+            <h2>Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="total-emails">-</div>
+                    <div class="stat-label">Total Emails</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value format-bytes" id="total-storage">-</div>
+                    <div class="stat-label">Total Storage</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="account-count">-</div>
+                    <div class="stat-label">Accounts</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Configured Servers & Accounts</h2>
+            <div id="servers-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>Email Statistics by Account</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        <th>Mailbox</th>
+                        <th>Emails</th>
+                        <th>Storage</th>
+                        <th>Last Fetch</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-table-body">
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #999;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Manual Fetch</h2>
+            <button class="btn" id="fetch-btn" onclick="triggerFetch()">
+                <span class="status-indicator status-idle" id="status-indicator"></span>
+                Start Fetch
+            </button>
+            <div id="fetch-status"></div>
+            <div id="fetch-message"></div>
+        </div>
+    </div>
+
+    <script>
+        let fetchInterval = null;
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleString();
+            } catch {
+                return dateStr;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                // Update statistics
+                document.getElementById('total-emails').textContent = data.total_emails.toLocaleString();
+                document.getElementById('total-storage').textContent = formatBytes(data.total_storage_bytes);
+                document.getElementById('account-count').textContent = data.accounts.reduce((sum, s) => sum + s.accounts.length, 0);
+
+                // Update servers list
+                const serversList = document.getElementById('servers-list');
+                serversList.innerHTML = data.accounts.map(server => `
+                    <div class="server-section">
+                        <div class="server-header">
+                            ${server.host}:${server.port}
+                        </div>
+                        <div class="account-list">
+                            ${server.accounts.map(account => `
+                                <div class="account-item">
+                                    📧 ${account.email}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Update stats table
+                const tbody = document.getElementById('stats-table-body');
+                if (data.per_account_stats.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No emails fetched yet</td></tr>';
+                } else {
+                    tbody.innerHTML = data.per_account_stats.map(stat => `
+                        <tr>
+                            <td>${stat.account_email}</td>
+                            <td>${stat.mailbox}</td>
+                            <td>${stat.email_count.toLocaleString()}</td>
+                            <td class="format-bytes">${formatBytes(stat.storage_bytes)}</td>
+                            <td>${formatDate(stat.last_fetch)}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadFetchStatus() {
+            try {
+                const response = await fetch('/api/fetch/status');
+                const data = await response.json();
+
+                const indicator = document.getElementById('status-indicator');
+                const fetchBtn = document.getElementById('fetch-btn');
+                const fetchStatus = document.getElementById('fetch-status');
+
+                if (data.is_running) {
+                    indicator.className = 'status-indicator status-running';
+                    fetchBtn.disabled = true;
+                    fetchBtn.innerHTML = `
+                        <span class="status-indicator status-running"></span>
+                        Fetching... (${data.messages_fetched} fetched)
+                    `;
+                    if (data.started_at) {
+                        fetchStatus.innerHTML = `
+                            <div class="fetch-status">
+                                <strong>Status:</strong> Running<br>
+                                <strong>Started:</strong> ${formatDate(data.started_at)}<br>
+                                <strong>Messages fetched:</strong> ${data.messages_fetched}
+                            </div>
+                        `;
+                    }
+                } else {
+                    indicator.className = 'status-indicator status-idle';
+                    fetchBtn.disabled = false;
+                    fetchBtn.innerHTML = `
+                        <span class="status-indicator status-idle"></span>
+                        Start Fetch
+                    `;
+                    if (data.started_at) {
+                        fetchStatus.innerHTML = `
+                            <div class="fetch-status">
+                                <strong>Status:</strong> Completed<br>
+                                <strong>Last run:</strong> ${formatDate(data.started_at)}<br>
+                                <strong>Messages fetched:</strong> ${data.messages_fetched}
+                            </div>
+                        `;
+                    } else {
+                        fetchStatus.innerHTML = '';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading fetch status:', error);
+            }
+        }
+
+        async function triggerFetch() {
+            const fetchBtn = document.getElementById('fetch-btn');
+            const fetchMessage = document.getElementById('fetch-message');
+
+            fetchBtn.disabled = true;
+            fetchMessage.innerHTML = '<div class="loading"></div> Starting fetch...';
+
+            try {
+                const response = await fetch('/api/fetch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mailboxes: ['INBOX', 'Junk'] }),
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'already_running') {
+                    fetchMessage.innerHTML = '<div class="error">A fetch operation is already in progress</div>';
+                    fetchBtn.disabled = true;
+                } else {
+                    fetchMessage.innerHTML = '<div class="success">Fetch operation started successfully</div>';
+                    // Start polling for status
+                    if (!fetchInterval) {
+                        fetchInterval = setInterval(() => {
+                            loadFetchStatus();
+                            loadStats();
+                        }, 2000);
+                    }
+                }
+            } catch (error) {
+                fetchMessage.innerHTML = `<div class="error">Error starting fetch: ${error.message}</div>`;
+                fetchBtn.disabled = false;
+            }
+
+            // Refresh status immediately
+            setTimeout(loadFetchStatus, 500);
+        }
+
+        // Initial load
+        loadStats();
+        loadFetchStatus();
+
+        // Refresh stats every 10 seconds
+        setInterval(loadStats, 10000);
+        setInterval(loadFetchStatus, 3000);
+
+        // Cleanup interval on page unload
+        window.addEventListener('beforeunload', () => {
+            if (fetchInterval) {
+                clearInterval(fetchInterval);
+            }
+        });
+    </script>
+</body>
+</html>
+
