@@ -1,6 +1,14 @@
 # Mailster Configuration File
 # Copy this file to config.toml and fill in your account details
 
+# Storage configuration
+email_storage_path = "emails"  # Path where emails will be stored (default: "emails")
+
+# Fetch configuration
+fetch_on_startup = true        # Automatically fetch emails when server starts (default: true)
+fetch_interval_seconds = 3600  # Optional: Automatically fetch every N seconds (e.g., 3600 = 1 hour)
+                                # Leave unset or comment out to disable periodic fetching
+
 # First IMAP server (e.g., iCloud)
 [[servers]]
 host = "imap.mail.me.com"

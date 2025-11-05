@@ -20,6 +20,7 @@ pub struct AppState {
     pub config: Arc<Vec<AccountConfig>>,
     pub output_dir: Arc<PathBuf>,
     pub fetch_task: Arc<Mutex<Option<tokio::task::JoinHandle<Result<usize>>>>>,
+    pub fetch_interval_seconds: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -57,6 +58,7 @@ struct AccountStats {
 struct FetchStatusResponse {
     is_running: bool,
     started_at: Option<String>,
+    completed_at: Option<String>,
     messages_fetched: i64,
 }
 
@@ -189,9 +191,22 @@ async fn fetch_status_handler(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             
             if let Some(status) = db_status {
+                // Get completed_at from database - we need to query it directly
+                let conn = state.db.conn.lock().unwrap();
+                let completed_at: Option<String> = conn
+                    .query_row(
+                        "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
+                        [],
+                        |row| row.get::<_, Option<String>>(0),
+                    )
+                    .ok()
+                    .flatten();
+                drop(conn);
+                
                 return Ok(Json(FetchStatusResponse {
                     is_running: false,
                     started_at: status.started_at.map(|dt| dt.to_rfc3339()),
+                    completed_at: completed_at,
                     messages_fetched: status.messages_fetched,
                 }));
             }
@@ -199,6 +214,7 @@ async fn fetch_status_handler(
             return Ok(Json(FetchStatusResponse {
                 is_running: false,
                 started_at: None,
+                completed_at: None,
                 messages_fetched: 0,
             }));
         } else {
@@ -212,6 +228,7 @@ async fn fetch_status_handler(
                 return Ok(Json(FetchStatusResponse {
                     is_running: true,
                     started_at: status.started_at.map(|dt| dt.to_rfc3339()),
+                    completed_at: None,
                     messages_fetched: status.messages_fetched,
                 }));
             }
@@ -225,15 +242,29 @@ async fn fetch_status_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(status) = db_status {
+        // Get completed_at from database
+        let conn = state.db.conn.lock().unwrap();
+        let completed_at: Option<String> = conn
+            .query_row(
+                "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten();
+        drop(conn);
+        
         Ok(Json(FetchStatusResponse {
             is_running: false,
             started_at: status.started_at.map(|dt| dt.to_rfc3339()),
+            completed_at,
             messages_fetched: status.messages_fetched,
         }))
     } else {
         Ok(Json(FetchStatusResponse {
             is_running: false,
             started_at: None,
+            completed_at: None,
             messages_fetched: 0,
         }))
     }
@@ -249,7 +280,50 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-pub async fn start_server(state: AppState, port: u16) -> Result<()> {
+async fn trigger_fetch(state: &AppState) {
+    let mut task_handle = state.fetch_task.lock().await;
+    if task_handle.is_some() {
+        return; // Already running
+    }
+
+    let accounts = state.config.clone();
+    let output_dir = state.output_dir.clone();
+    let db = Arc::clone(&state.db);
+    let mailboxes = vec!["INBOX".to_string(), "Junk".to_string()];
+
+    let mailboxes_for_task = mailboxes.clone();
+    let handle = tokio::spawn(async move {
+        let mailboxes_strs: Vec<&str> = mailboxes_for_task.iter().map(|s| s.as_str()).collect();
+        fetch_all_accounts(&accounts, &mailboxes_strs, &output_dir, &db).await
+    });
+
+    *task_handle = Some(handle);
+}
+
+pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) -> Result<()> {
+    // Trigger fetch on startup if configured
+    if fetch_on_startup {
+        println!("Starting initial fetch on startup...");
+        trigger_fetch(&state).await;
+    }
+
+    // Start periodic fetch task if interval is configured
+    if let Some(interval_seconds) = state.fetch_interval_seconds {
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_seconds));
+            // Skip first tick to avoid immediate execution (already done on startup if enabled)
+            interval.tick().await;
+            
+            loop {
+                interval.tick().await;
+                println!("Periodic fetch triggered (interval: {}s)", interval_seconds);
+                trigger_fetch(&state_clone).await;
+            }
+        });
+        println!("Periodic fetch enabled: every {} seconds", interval_seconds);
+    }
+
     let app = create_router(state);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
     println!("🚀 Mailster dashboard running on http://0.0.0.0:{}", port);

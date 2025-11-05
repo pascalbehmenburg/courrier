@@ -17,11 +17,12 @@ async fn main() -> Result<()> {
     let db = database::Database::new("mailster.db")?;
 
     // Load configuration
-    let accounts = config::load_config()?;
+    let app_config = config::load_config()?;
+    let accounts = config::extract_accounts(&app_config);
     println!("Loaded {} account(s) from config.toml", accounts.len());
 
-    // Create output directory
-    let output_dir = PathBuf::from("emails");
+    // Create output directory from config
+    let output_dir = PathBuf::from(&app_config.email_storage_path);
     std::fs::create_dir_all(&output_dir)?;
     println!("Output directory: {}", output_dir.display());
 
@@ -42,9 +43,10 @@ async fn main() -> Result<()> {
                 config: Arc::new(accounts),
                 output_dir: Arc::new(output_dir),
                 fetch_task: Arc::new(Mutex::new(None)),
+                fetch_interval_seconds: app_config.fetch_interval_seconds,
             };
 
-            server::start_server(state, port).await?;
+            server::start_server(state, port, app_config.fetch_on_startup).await?;
         }
         Some(cmd) => {
             eprintln!("Unknown command: {}", cmd);

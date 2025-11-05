@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 
 pub struct Database {
-    conn: Arc<Mutex<Connection>>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 #[derive(Debug, Clone)]

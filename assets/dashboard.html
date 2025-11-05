@@ -236,6 +236,17 @@
         </div>
 
         <div class="card">
+            <h2>Manual Fetch</h2>
+            <button class="btn" id="fetch-btn" onclick="triggerFetch()">
+                <span class="status-indicator status-idle" id="status-indicator"></span>
+                Start Fetch
+            </button>
+            <div id="fetch-status"></div>
+            <div id="fetch-message"></div>
+            <div id="fetch-timer" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
+        </div>
+
+        <div class="card">
             <h2>Statistics</h2>
             <div class="stats-grid">
                 <div class="stat-item">
@@ -278,19 +289,12 @@
             </table>
         </div>
 
-        <div class="card">
-            <h2>Manual Fetch</h2>
-            <button class="btn" id="fetch-btn" onclick="triggerFetch()">
-                <span class="status-indicator status-idle" id="status-indicator"></span>
-                Start Fetch
-            </button>
-            <div id="fetch-status"></div>
-            <div id="fetch-message"></div>
-        </div>
     </div>
 
     <script>
         let fetchInterval = null;
+        let timerInterval = null;
+        let fetchStartTime = null;
 
         function formatBytes(bytes) {
             if (bytes === 0) return '0 B';
@@ -357,6 +361,31 @@
             }
         }
 
+        function formatElapsedTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+        function updateTimer() {
+            const timerElement = document.getElementById('fetch-timer');
+            if (!fetchStartTime) {
+                timerElement.textContent = '';
+                return;
+            }
+
+            const elapsed = Math.floor((Date.now() - fetchStartTime) / 1000);
+            timerElement.textContent = `Elapsed time: ${formatElapsedTime(elapsed)}`;
+        }
+
         async function loadFetchStatus() {
             try {
                 const response = await fetch('/api/fetch/status');
@@ -365,8 +394,17 @@
                 const indicator = document.getElementById('status-indicator');
                 const fetchBtn = document.getElementById('fetch-btn');
                 const fetchStatus = document.getElementById('fetch-status');
+                const timerElement = document.getElementById('fetch-timer');
 
                 if (data.is_running) {
+                    // Start timer if not already started
+                    if (!fetchStartTime && data.started_at) {
+                        fetchStartTime = new Date(data.started_at).getTime();
+                        if (!timerInterval) {
+                            timerInterval = setInterval(updateTimer, 1000);
+                        }
+                    }
+                    
                     indicator.className = 'status-indicator status-running';
                     fetchBtn.disabled = true;
                     fetchBtn.innerHTML = `
@@ -374,6 +412,7 @@
                         Fetching... (${data.messages_fetched} fetched)
                     `;
                     if (data.started_at) {
+                        updateTimer();
                         fetchStatus.innerHTML = `
                             <div class="fetch-status">
                                 <strong>Status:</strong> Running<br>
@@ -383,6 +422,26 @@
                         `;
                     }
                 } else {
+                    // Stop timer
+                    if (timerInterval) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                    }
+                    
+                    if (data.completed_at) {
+                        if (fetchStartTime) {
+                            const completedTime = new Date(data.completed_at).getTime();
+                            const elapsed = Math.floor((completedTime - fetchStartTime) / 1000);
+                            timerElement.textContent = `Completed in: ${formatElapsedTime(elapsed)}`;
+                            fetchStartTime = null;
+                        } else {
+                            timerElement.textContent = `Completed at: ${formatDate(data.completed_at)}`;
+                        }
+                    } else {
+                        timerElement.textContent = '';
+                        fetchStartTime = null;
+                    }
+                    
                     indicator.className = 'status-indicator status-idle';
                     fetchBtn.disabled = false;
                     fetchBtn.innerHTML = `
@@ -394,6 +453,7 @@
                             <div class="fetch-status">
                                 <strong>Status:</strong> Completed<br>
                                 <strong>Last run:</strong> ${formatDate(data.started_at)}<br>
+                                ${data.completed_at ? `<strong>Completed:</strong> ${formatDate(data.completed_at)}<br>` : ''}
                                 <strong>Messages fetched:</strong> ${data.messages_fetched}
                             </div>
                         `;
@@ -458,6 +518,9 @@
         window.addEventListener('beforeunload', () => {
             if (fetchInterval) {
                 clearInterval(fetchInterval);
+            }
+            if (timerInterval) {
+                clearInterval(timerInterval);
             }
         });
     </script>
