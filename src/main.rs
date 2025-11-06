@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     // Load configuration
     let app_config = config::load_config()?;
     let accounts = config::extract_accounts(&app_config);
-    println!("Loaded {} account(s) from config.toml", accounts.len());
+    println!("Loaded {} account(s) from Config.toml", accounts.len());
 
     // Create output directory from config
     let output_dir = PathBuf::from(&app_config.email_storage_path);

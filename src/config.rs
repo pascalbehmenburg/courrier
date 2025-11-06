@@ -72,12 +72,12 @@ pub fn load_config_from_file(config_path: &PathBuf) -> Result<AppConfig> {
 }
 
 pub fn load_config() -> Result<AppConfig> {
-    let config_path = PathBuf::from("config.toml");
+    let config_path = PathBuf::from("Config.toml");
 
     if !config_path.exists() {
         return Err(anyhow::anyhow!(
             "Config file not found: {}\n\
-            Please create a config.toml file with the following format:\n\
+            Please create a Config.toml file with the following format:\n\
             \n\
             [[servers]]\n\
             host = \"imap.mail.me.com\"\n\
@@ -94,7 +94,7 @@ pub fn load_config() -> Result<AppConfig> {
               {{ email = \"gmail-account@gmail.com\", username = \"gmail-username\", password = \"gmail-password\" }}\n\
             ]\n\
             \n\
-            See config.toml.example for a complete example.",
+            See Config.toml.example for a complete example.",
             config_path.display()
         ));
     }

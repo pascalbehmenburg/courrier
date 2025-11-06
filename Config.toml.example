@@ -1,5 +1,5 @@
 # Courrier Configuration File
-# Copy this file to config.toml and fill in your account details
+# Copy this file to Config.toml and fill in your account details
 
 # Storage configuration
 email_storage_path = "emails"  # Path where emails will be stored (default: "emails")
