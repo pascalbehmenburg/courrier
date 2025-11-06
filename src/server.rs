@@ -312,7 +312,7 @@ pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) ->
 
     let app = create_router(state);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    println!("🚀 Mailster dashboard running on http://0.0.0.0:{}", port);
+    println!("🚀 Courrier dashboard running on http://0.0.0.0:{}", port);
     axum::serve(listener, app).await?;
     Ok(())
 }

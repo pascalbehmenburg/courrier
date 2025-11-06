@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     let command = args.get(1).map(|s| s.as_str());
 
     // Initialize database
-    let db = database::Database::new("mailster.db")?;
+    let db = database::Database::new("courrier.db")?;
 
     // Load configuration
     let app_config = config::load_config()?;
@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
         }
         Some(cmd) => {
             eprintln!("Unknown command: {}", cmd);
-            eprintln!("Usage: mailster [fetch|server] [port]");
+            eprintln!("Usage: courrier [fetch|server] [port]");
             eprintln!("  fetch  - Run one-time fetch and exit");
             eprintln!("  server - Start web dashboard (default)");
             eprintln!("  port   - Port number for server (default: 3000)");
