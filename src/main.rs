@@ -13,8 +13,9 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(|s| s.as_str());
 
-    // Initialize database
-    let db = database::Database::new("courrier.db")?;
+    // Initialize database - use environment variable if set, otherwise default to "courrier.db"
+    let db_path = std::env::var("COURRIER_DB_PATH").unwrap_or_else(|_| "courrier.db".to_string());
+    let db = database::Database::new(&db_path)?;
 
     // Load configuration
     let app_config = config::load_config()?;

@@ -1,0 +1,12 @@
+services:
+  courrier:
+    build: .
+    container_name: courrier
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    restart: unless-stopped
+    environment:
+      - COURRIER_DB_PATH=/data/courrier.db
