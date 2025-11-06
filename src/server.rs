@@ -141,7 +141,7 @@ struct FetchRequest {
 
 async fn fetch_handler(
     State(state): State<AppState>,
-    Json(payload): Json<FetchRequest>,
+    Json(_payload): Json<FetchRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Check if a fetch is already running
     let mut task_handle = state.fetch_task.lock().await;
@@ -152,26 +152,20 @@ async fn fetch_handler(
         })));
     }
 
-    let mailboxes: Vec<String> = payload
-        .mailboxes
-        .unwrap_or_else(|| vec!["INBOX".to_string(), "Junk".to_string()]);
-
     let accounts = state.config.clone();
     let output_dir = state.output_dir.clone();
     let db = Arc::clone(&state.db);
 
-    // Spawn fetch task - move mailboxes into the closure to keep it alive
-    let mailboxes_for_task = mailboxes.clone();
+    // Spawn fetch task - fetch all mailboxes automatically
     let handle = tokio::spawn(async move {
-        let mailboxes_strs: Vec<&str> = mailboxes_for_task.iter().map(|s| s.as_str()).collect();
-        fetch_all_accounts(&accounts, &mailboxes_strs, &output_dir, &db).await
+        fetch_all_accounts(&accounts, &output_dir, &db).await
     });
 
     *task_handle = Some(handle);
 
     Ok(Json(serde_json::json!({
         "status": "started",
-        "message": "Fetch operation started"
+        "message": "Fetch operation started (all mailboxes will be fetched)"
     })))
 }
 
@@ -289,12 +283,10 @@ async fn trigger_fetch(state: &AppState) {
     let accounts = state.config.clone();
     let output_dir = state.output_dir.clone();
     let db = Arc::clone(&state.db);
-    let mailboxes = vec!["INBOX".to_string(), "Junk".to_string()];
 
-    let mailboxes_for_task = mailboxes.clone();
+    // Spawn fetch task - fetch all mailboxes automatically
     let handle = tokio::spawn(async move {
-        let mailboxes_strs: Vec<&str> = mailboxes_for_task.iter().map(|s| s.as_str()).collect();
-        fetch_all_accounts(&accounts, &mailboxes_strs, &output_dir, &db).await
+        fetch_all_accounts(&accounts, &output_dir, &db).await
     });
 
     *task_handle = Some(handle);

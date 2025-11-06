@@ -66,14 +66,11 @@ async fn run_fetch(
     output_dir: &PathBuf,
     db: &database::Database,
 ) -> Result<()> {
-    let mailboxes_to_fetch = vec!["INBOX", "Junk"];
-
     println!("\n{}", "=".repeat(80));
     println!("Starting fetch operation");
     println!("{}", "=".repeat(80));
 
-    let total_saved = fetcher::fetch_all_accounts(accounts, &mailboxes_to_fetch, output_dir, db)
-        .await?;
+    let total_saved = fetcher::fetch_all_accounts(accounts, output_dir, db).await?;
 
     println!("\n{}", "=".repeat(80));
     println!("✓ Done! Total messages saved: {}", total_saved);

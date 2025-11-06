@@ -192,10 +192,6 @@ pub async fn fetch_all_messages_from_mailbox(
     let (saved_count, saved_uids) = tokio::task::spawn_blocking(move || {
         let mut session = connect_and_login_sync(&config_clone)?;
 
-        // List available mailboxes
-        println!("Listing mailboxes...");
-        let _mailboxes = session.list(Some(""), Some("*"))?;
-
         // Select/examine the mailbox
         println!("Selecting mailbox: {}...", mailbox_name_str);
         let mailbox = match session.select(mailbox_name_str.as_str()) {
@@ -208,9 +204,11 @@ pub async fn fetch_all_messages_from_mailbox(
 
         println!("✓ Selected {} ({} messages)", mailbox_name_str, mailbox.exists);
 
-        // Get all UIDs
-        let uids = session.uid_search("ALL")?;
-        println!("Found {} messages to fetch", uids.len());
+        // Get all UIDs that are NOT DELETED
+        // Using "NOT DELETED" instead of "ALL" to ensure we get all messages
+        // that are actually available (Gmail and other servers may filter "ALL")
+        let uids = session.uid_search("NOT DELETED")?;
+        println!("Found {} messages to fetch (NOT DELETED)", uids.len());
 
         // Filter out already fetched UIDs
         let fetched_set_clone = fetched_set.clone();
@@ -364,7 +362,6 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
 
 pub async fn fetch_all_accounts(
     accounts: &[AccountConfig],
-    mailboxes: &[&str],
     output_dir: &PathBuf,
     db: &Database,
 ) -> Result<usize> {
@@ -375,7 +372,31 @@ pub async fn fetch_all_accounts(
         println!("Processing account: {}", account.email);
         println!("{}", "=".repeat(80));
 
-        for mailbox in mailboxes {
+        // Get all mailboxes from LIST command
+        let account_clone = account.clone();
+        let mailboxes = tokio::task::spawn_blocking(move || {
+            let mut session = connect_and_login_sync(&account_clone)?;
+            println!("Listing all mailboxes...");
+            let mailboxes = session.list(Some(""), Some("*"))?;
+            let _ = session.logout();
+            
+            // Extract mailbox names from the LIST response
+            let mailbox_names: Vec<String> = mailboxes
+                .iter()
+                .map(|name| name.name().to_string())
+                .collect();
+            
+            Ok::<Vec<String>, anyhow::Error>(mailbox_names)
+        })
+        .await??;
+
+        println!("Found {} mailbox(es):", mailboxes.len());
+        for mailbox_name in &mailboxes {
+            println!("  - {}", mailbox_name);
+        }
+
+        // Fetch from all mailboxes
+        for mailbox in &mailboxes {
             println!("\n--- Fetching from mailbox: {} ---", mailbox);
 
             match fetch_all_messages_from_mailbox(account, mailbox, output_dir, db).await {
