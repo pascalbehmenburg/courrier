@@ -476,10 +476,6 @@
             try {
                 const response = await fetch('/api/fetch', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ mailboxes: ['INBOX', 'Junk'] }),
                 });
 
                 const data = await response.json();

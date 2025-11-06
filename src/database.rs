@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rusqlite::{Connection, params};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 
@@ -19,10 +19,10 @@ pub struct EmailStats {
 
 #[derive(Debug, Clone)]
 pub struct FetchStatus {
+    #[expect(unused)]
     pub is_running: bool,
     pub started_at: Option<DateTime<Utc>>,
     pub messages_fetched: i64,
-    pub messages_total: Option<i64>,
 }
 
 impl Database {
@@ -80,23 +80,12 @@ impl Database {
         Ok(())
     }
 
-    pub fn is_email_fetched(&self, account_email: &str, mailbox: &str, uid: u32) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT 1 FROM fetched_emails 
-             WHERE account_email = ?1 AND mailbox = ?2 AND uid = ?3 
-             LIMIT 1"
-        )?;
-        let exists = stmt.exists(params![account_email, mailbox, uid])?;
-        Ok(exists)
-    }
-
     pub fn mark_email_fetched(
         &self,
         account_email: &str,
         mailbox: &str,
         uid: u32,
-        file_path: &PathBuf,
+        file_path: &Path,
         size_bytes: usize,
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -189,39 +178,6 @@ impl Database {
         Ok(row)
     }
 
-    pub fn start_fetch_history(
-        &self,
-        account_email: &str,
-        mailbox: &str,
-    ) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT INTO fetch_history 
-             (account_email, mailbox, started_at, status)
-             VALUES (?1, ?2, ?3, 'running')",
-            params![account_email, mailbox, now],
-        )?;
-        Ok(conn.last_insert_rowid())
-    }
-
-    pub fn complete_fetch_history(
-        &self,
-        id: i64,
-        messages_fetched: i64,
-        status: &str,
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE fetch_history 
-             SET completed_at = ?1, messages_fetched = ?2, status = ?3
-             WHERE id = ?4",
-            params![now, messages_fetched, status, id],
-        )?;
-        Ok(())
-    }
-
     pub fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -247,7 +203,6 @@ impl Database {
                 is_running,
                 started_at,
                 messages_fetched,
-                messages_total: None,
             })
         })?;
 

@@ -6,103 +6,7 @@ use native_tls::TlsStream;
 use std::fs;
 use std::io::Write;
 use std::net::TcpStream;
-use std::path::PathBuf;
-
-pub async fn connect_and_login(
-    config: &AccountConfig,
-) -> Result<Session<TlsStream<TcpStream>>> {
-    let tls = native_tls::TlsConnector::builder().build()?;
-    println!("Connecting to {}:{}", config.server, config.port);
-
-    // Run blocking IMAP operations in a thread pool
-    let server = config.server.clone();
-    let port = config.port;
-    let username = config.username.clone();
-    let password = config.password.clone();
-    let email = config.email.clone();
-
-    let client = tokio::task::spawn_blocking(move || {
-        imap::connect((server.as_str(), port), server.as_str(), &tls)
-    })
-    .await??;
-
-    println!("Connected to {}", config.server);
-    println!("Logging in as {} (username: {})", config.email, config.username);
-
-    let username_clone = username.clone();
-    let password_clone = password.clone();
-    let server_clone = config.server.clone();
-
-    match tokio::task::spawn_blocking(move || {
-        client.login(&username_clone, &password_clone)
-    })
-    .await?
-    {
-        Ok(session) => {
-            println!("✓ Successfully logged in!");
-            Ok(session)
-        }
-        Err(e) => {
-            // For Gmail, if login fails and username contains @, try without the domain
-            if config.server == "imap.gmail.com" && config.username.contains('@') {
-                let username_local = config.username.split('@').next().unwrap().to_string();
-                println!(
-                    "First attempt failed, reconnecting and trying with local username: {}",
-                    username_local
-                );
-
-                // Reconnect for retry - rebuild TLS connector
-                let tls_retry = native_tls::TlsConnector::builder().build()?;
-                let retry_client = tokio::task::spawn_blocking({
-                    let server_clone = server_clone.clone();
-                    move || {
-                        imap::connect((server_clone.as_str(), port), server_clone.as_str(), &tls_retry)
-                    }
-                })
-                .await??;
-
-                let username_local_clone = username_local.clone();
-                match tokio::task::spawn_blocking(move || {
-                    retry_client.login(&username_local_clone, &password)
-                })
-                .await?
-                {
-                    Ok(session) => {
-                        println!("✓ Successfully logged in with local username!");
-                        Ok(session)
-                    }
-                    Err(e2) => {
-                        eprintln!(
-                            "❌ Login failed for {} with both username formats",
-                            email
-                        );
-                        eprintln!("   Error with '{}': {:?}", username, e);
-                        eprintln!("   Error with '{}': {:?}", username_local, e2);
-                        eprintln!("\nGmail troubleshooting:");
-                        eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                        eprintln!("2. Use an App-Specific Password (not your regular password)");
-                        eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                        eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
-                        eprintln!("4. App passwords are 16 characters (may include spaces)");
-                        Err(anyhow::anyhow!("Login failed: {:?}", e2.0))
-                    }
-                }
-            } else {
-                // For non-Gmail, just report the error
-                eprintln!("❌ Login failed for {}: {:?}", email, e);
-                if config.server == "imap.gmail.com" {
-                    eprintln!("\nGmail troubleshooting:");
-                    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                    eprintln!("2. Use an App-Specific Password (not your regular password)");
-                    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                    eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
-                    eprintln!("4. App passwords are 16 characters (may include spaces)");
-                }
-                Err(anyhow::anyhow!("Login failed: {:?}", e.0))
-            }
-        }
-    }
-}
+use std::path::{Path, PathBuf};
 
 fn fetch_message_body(
     session: &mut Session<TlsStream<TcpStream>>,
@@ -114,7 +18,7 @@ fn fetch_message_body(
         match session.uid_fetch(uid.to_string(), "BODY.PEEK[]") {
             Ok(msgs) => {
                 if let Some(msg) = msgs.iter().next() {
-                    msg.body().map(|b| Vec::from(b))
+                    msg.body().map(Vec::from)
                 } else {
                     None
                 }
@@ -125,7 +29,7 @@ fn fetch_message_body(
         match session.fetch(uid.to_string(), "BODY.PEEK[]") {
             Ok(msgs) => {
                 if let Some(msg) = msgs.iter().next() {
-                    msg.body().map(|b| Vec::from(b))
+                    msg.body().map(Vec::from)
                 } else {
                     None
                 }
@@ -175,7 +79,7 @@ fn fetch_message_body(
 pub async fn fetch_all_messages_from_mailbox(
     config: &AccountConfig,
     mailbox_name: &str,
-    output_dir: &PathBuf,
+    output_dir: &Path,
     db: &Database,
 ) -> Result<usize> {
     // Get already fetched UIDs from database first (before blocking task)
@@ -185,7 +89,7 @@ pub async fn fetch_all_messages_from_mailbox(
     // Prepare data for blocking task
     let config_clone = config.clone();
     let mailbox_name_str = mailbox_name.to_string();
-    let output_dir_clone = output_dir.clone();
+    let output_dir_clone = output_dir.to_path_buf();
     let email_clone = config.email.clone();
 
     // Run all IMAP operations in a single blocking task
@@ -231,7 +135,7 @@ pub async fn fetch_all_messages_from_mailbox(
 
         if !uids_to_fetch.is_empty() {
             // Create output directory for this account/mailbox
-            let account_dir = output_dir_clone.join(&email_clone.replace("@", "_"));
+            let account_dir = output_dir_clone.join(email_clone.replace("@", "_"));
             let mailbox_dir = account_dir.join(mailbox_name_str.as_str());
             fs::create_dir_all(&mailbox_dir)?;
             println!("Saving messages to: {}", mailbox_dir.display());
@@ -362,7 +266,7 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
 
 pub async fn fetch_all_accounts(
     accounts: &[AccountConfig],
-    output_dir: &PathBuf,
+    output_dir: &Path,
     db: &Database,
 ) -> Result<usize> {
     let mut total_saved = 0;

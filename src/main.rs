@@ -4,7 +4,7 @@ mod fetcher;
 mod server;
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
 
 async fn run_fetch(
     accounts: &[config::AccountConfig],
-    output_dir: &PathBuf,
+    output_dir: &Path,
     db: &database::Database,
 ) -> Result<()> {
     println!("\n{}", "=".repeat(80));

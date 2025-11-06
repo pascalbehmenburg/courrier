@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -134,14 +134,8 @@ async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsRespon
     }))
 }
 
-#[derive(Deserialize)]
-struct FetchRequest {
-    mailboxes: Option<Vec<String>>,
-}
-
 async fn fetch_handler(
     State(state): State<AppState>,
-    Json(_payload): Json<FetchRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Check if a fetch is already running
     let mut task_handle = state.fetch_task.lock().await;
@@ -200,7 +194,7 @@ async fn fetch_status_handler(
                 return Ok(Json(FetchStatusResponse {
                     is_running: false,
                     started_at: status.started_at.map(|dt| dt.to_rfc3339()),
-                    completed_at: completed_at,
+                    completed_at,
                     messages_fetched: status.messages_fetched,
                 }));
             }

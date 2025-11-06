@@ -46,7 +46,7 @@ pub struct AppConfig {
     pub fetch_interval_seconds: Option<u64>,
     #[serde(default = "default_fetch_on_startup")]
     pub fetch_on_startup: bool,
-    pub servers: Vec<ServerConfig>,
+    pub(self) servers: Vec<ServerConfig>,
 }
 
 #[derive(Debug, Deserialize)]
