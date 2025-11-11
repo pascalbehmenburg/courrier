@@ -50,6 +50,5 @@ ENV COURRIER_DB_PATH=/data/courrier.db
 # Expose port for web dashboard
 EXPOSE 3000
 
-# Default command: start server
 CMD ["courrier", "server", "3000"]
 
