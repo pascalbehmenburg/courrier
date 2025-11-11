@@ -34,10 +34,7 @@ async fn main() -> Result<()> {
         }
         Some("server") | None => {
             // Server mode: start dashboard
-            let port = args
-                .get(2)
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(3000);
+            let port = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3000);
 
             let state = server::AppState {
                 db: Arc::new(db),

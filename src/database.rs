@@ -1,8 +1,8 @@
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use chrono::{DateTime, Utc};
 
 pub struct Database {
     pub conn: Arc<Mutex<Connection>>,
@@ -110,7 +110,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uid FROM fetched_emails 
-             WHERE account_email = ?1 AND mailbox = ?2"
+             WHERE account_email = ?1 AND mailbox = ?2",
         )?;
         let uids: Result<Vec<u32>, _> = stmt
             .query_map(params![account_email, mailbox], |row| {
@@ -131,7 +131,7 @@ impl Database {
                 MAX(fetched_at) as last_fetch
              FROM fetched_emails
              GROUP BY account_email, mailbox
-             ORDER BY account_email, mailbox"
+             ORDER BY account_email, mailbox",
         )?;
 
         let stats: Result<Vec<EmailStats>, _> = stmt
@@ -165,7 +165,7 @@ impl Database {
             "SELECT 
                 COUNT(*) as total_count,
                 SUM(size_bytes) as total_size_bytes
-             FROM fetched_emails"
+             FROM fetched_emails",
         )?;
 
         let row = stmt.query_row([], |row| {
@@ -184,7 +184,7 @@ impl Database {
             "SELECT started_at, completed_at, messages_fetched, status
              FROM fetch_history
              ORDER BY started_at DESC
-             LIMIT 1"
+             LIMIT 1",
         )?;
 
         let mut rows = stmt.query_map([], |row| {
@@ -213,4 +213,3 @@ impl Database {
         }
     }
 }
-

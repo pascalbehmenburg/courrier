@@ -90,7 +90,10 @@ async fn accounts_handler(State(state): State<AppState>) -> Json<Vec<ServerInfo>
 }
 
 async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsResponse>, StatusCode> {
-    let stats = state.db.get_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let stats = state
+        .db
+        .get_stats()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let (total_emails, total_storage_bytes) = state
         .db
         .get_total_stats()
@@ -151,9 +154,7 @@ async fn fetch_handler(
     let db = Arc::clone(&state.db);
 
     // Spawn fetch task - fetch all mailboxes automatically
-    let handle = tokio::spawn(async move {
-        fetch_all_accounts(&accounts, &output_dir, &db).await
-    });
+    let handle = tokio::spawn(async move { fetch_all_accounts(&accounts, &output_dir, &db).await });
 
     *task_handle = Some(handle);
 
@@ -168,7 +169,7 @@ async fn fetch_status_handler(
 ) -> Result<Json<FetchStatusResponse>, StatusCode> {
     // Check if task is still running
     let mut task_handle = state.fetch_task.lock().await;
-    
+
     if let Some(ref handle) = *task_handle {
         if handle.is_finished() {
             // Task completed, clean up
@@ -177,7 +178,7 @@ async fn fetch_status_handler(
                 .db
                 .get_latest_fetch_status()
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            
+
             if let Some(status) = db_status {
                 // Get completed_at from database - we need to query it directly
                 let conn = state.db.conn.lock().unwrap();
@@ -190,7 +191,7 @@ async fn fetch_status_handler(
                     .ok()
                     .flatten();
                 drop(conn);
-                
+
                 return Ok(Json(FetchStatusResponse {
                     is_running: false,
                     started_at: status.started_at.map(|dt| dt.to_rfc3339()),
@@ -198,7 +199,7 @@ async fn fetch_status_handler(
                     messages_fetched: status.messages_fetched,
                 }));
             }
-            
+
             return Ok(Json(FetchStatusResponse {
                 is_running: false,
                 started_at: None,
@@ -211,7 +212,7 @@ async fn fetch_status_handler(
                 .db
                 .get_latest_fetch_status()
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            
+
             if let Some(status) = db_status {
                 return Ok(Json(FetchStatusResponse {
                     is_running: true,
@@ -241,7 +242,7 @@ async fn fetch_status_handler(
             .ok()
             .flatten();
         drop(conn);
-        
+
         Ok(Json(FetchStatusResponse {
             is_running: false,
             started_at: status.started_at.map(|dt| dt.to_rfc3339()),
@@ -279,9 +280,7 @@ async fn trigger_fetch(state: &AppState) {
     let db = Arc::clone(&state.db);
 
     // Spawn fetch task - fetch all mailboxes automatically
-    let handle = tokio::spawn(async move {
-        fetch_all_accounts(&accounts, &output_dir, &db).await
-    });
+    let handle = tokio::spawn(async move { fetch_all_accounts(&accounts, &output_dir, &db).await });
 
     *task_handle = Some(handle);
 }
@@ -297,10 +296,11 @@ pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) ->
     if let Some(interval_seconds) = state.fetch_interval_seconds {
         let state_clone = state.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_seconds));
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_seconds));
             // Skip first tick to avoid immediate execution (already done on startup if enabled)
             interval.tick().await;
-            
+
             loop {
                 interval.tick().await;
                 println!("Periodic fetch triggered (interval: {}s)", interval_seconds);
@@ -316,4 +316,3 @@ pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) ->
     axum::serve(listener, app).await?;
     Ok(())
 }
-

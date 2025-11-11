@@ -1,6 +1,6 @@
-use anyhow::Result;
 use crate::config::AccountConfig;
 use crate::database::Database;
+use anyhow::Result;
 use imap::Session;
 use native_tls::TlsStream;
 use std::fs;
@@ -106,7 +106,10 @@ pub async fn fetch_all_messages_from_mailbox(
             }
         };
 
-        println!("✓ Selected {} ({} messages)", mailbox_name_str, mailbox.exists);
+        println!(
+            "✓ Selected {} ({} messages)",
+            mailbox_name_str, mailbox.exists
+        );
 
         // Get all UIDs that are NOT DELETED
         // Using "NOT DELETED" instead of "ALL" to ensure we get all messages
@@ -174,7 +177,10 @@ pub async fn fetch_all_messages_from_mailbox(
                 }
             }
 
-            println!("\n✓ Completed: {} saved, {} failed", saved_count, failed_count);
+            println!(
+                "\n✓ Completed: {} saved, {} failed",
+                saved_count, failed_count
+            );
         } else {
             println!("No new messages to fetch");
         }
@@ -188,13 +194,9 @@ pub async fn fetch_all_messages_from_mailbox(
 
     // Update database with fetched emails (do this after blocking task)
     for (uid, filepath, size_bytes) in saved_uids {
-        if let Err(e) = db.mark_email_fetched(
-            &config.email,
-            mailbox_name,
-            uid,
-            &filepath,
-            size_bytes,
-        ) {
+        if let Err(e) =
+            db.mark_email_fetched(&config.email, mailbox_name, uid, &filepath, size_bytes)
+        {
             eprintln!("✗ Failed to record UID {} in database: {:?}", uid, e);
         }
     }
@@ -207,9 +209,16 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
     let tls = native_tls::TlsConnector::builder().build()?;
     println!("Connecting to {}:{}", config.server, config.port);
 
-    let client = imap::connect((config.server.as_str(), config.port), config.server.as_str(), &tls)?;
+    let client = imap::connect(
+        (config.server.as_str(), config.port),
+        config.server.as_str(),
+        &tls,
+    )?;
     println!("Connected to {}", config.server);
-    println!("Logging in as {} (username: {})", config.email, config.username);
+    println!(
+        "Logging in as {} (username: {})",
+        config.email, config.username
+    );
 
     match client.login(&config.username, &config.password) {
         Ok(session) => {
@@ -227,7 +236,11 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
 
                 // Reconnect for retry
                 let tls_retry = native_tls::TlsConnector::builder().build()?;
-                let retry_client = imap::connect((config.server.as_str(), config.port), config.server.as_str(), &tls_retry)?;
+                let retry_client = imap::connect(
+                    (config.server.as_str(), config.port),
+                    config.server.as_str(),
+                    &tls_retry,
+                )?;
 
                 match retry_client.login(username_local, &config.password) {
                     Ok(session) => {
@@ -235,14 +248,19 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
                         Ok(session)
                     }
                     Err(e2) => {
-                        eprintln!("❌ Login failed for {} with both username formats", config.email);
+                        eprintln!(
+                            "❌ Login failed for {} with both username formats",
+                            config.email
+                        );
                         eprintln!("   Error with '{}': {:?}", config.username, e);
                         eprintln!("   Error with '{}': {:?}", username_local, e2);
                         eprintln!("\nGmail troubleshooting:");
                         eprintln!("1. Ensure IMAP is enabled in Gmail settings");
                         eprintln!("2. Use an App-Specific Password (not your regular password)");
                         eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                        eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
+                        eprintln!(
+                            "3. If 2FA is disabled, enable it first (required for app passwords)"
+                        );
                         eprintln!("4. App passwords are 16 characters (may include spaces)");
                         Err(anyhow::anyhow!("Login failed: {:?}", e2.0))
                     }
@@ -255,7 +273,9 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
                     eprintln!("1. Ensure IMAP is enabled in Gmail settings");
                     eprintln!("2. Use an App-Specific Password (not your regular password)");
                     eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                    eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
+                    eprintln!(
+                        "3. If 2FA is disabled, enable it first (required for app passwords)"
+                    );
                     eprintln!("4. App passwords are 16 characters (may include spaces)");
                 }
                 Err(anyhow::anyhow!("Login failed: {:?}", e.0))
@@ -283,13 +303,13 @@ pub async fn fetch_all_accounts(
             println!("Listing all mailboxes...");
             let mailboxes = session.list(Some(""), Some("*"))?;
             let _ = session.logout();
-            
+
             // Extract mailbox names from the LIST response
             let mailbox_names: Vec<String> = mailboxes
                 .iter()
                 .map(|name| name.name().to_string())
                 .collect();
-            
+
             Ok::<Vec<String>, anyhow::Error>(mailbox_names)
         })
         .await??;
@@ -312,7 +332,10 @@ pub async fn fetch_all_accounts(
                     total_saved += count;
                 }
                 Err(e) => {
-                    eprintln!("✗ Failed to fetch from {}/{}: {:?}", account.email, mailbox, e);
+                    eprintln!(
+                        "✗ Failed to fetch from {}/{}: {:?}",
+                        account.email, mailbox, e
+                    );
                 }
             }
         }
@@ -320,4 +343,3 @@ pub async fn fetch_all_accounts(
 
     Ok(total_saved)
 }
-

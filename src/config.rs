@@ -119,4 +119,3 @@ pub fn extract_accounts(config: &AppConfig) -> Vec<AccountConfig> {
 
     accounts
 }
-
