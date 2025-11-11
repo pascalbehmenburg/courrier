@@ -31,6 +31,17 @@ cargo build --release
 
 ### Using Docker
 
+You can either build the image locally or use the pre-built image from GitHub Container Registry.
+
+**Option 1: Use Pre-built Image (Recommended)**
+
+```bash
+# Pull the latest image from GitHub Container Registry
+docker pull ghcr.io/pascalbehmenburg/courrier:latest
+```
+
+**Option 2: Build Locally**
+
 ```bash
 docker build -t courrier .
 ```
@@ -95,7 +106,32 @@ The dashboard will be available at `http://localhost:3000` (or your specified po
 
 ## Docker Usage
 
-### Building the Image
+### Using Pre-built Image
+
+The easiest way to use Courrier is with the pre-built Docker image from GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/pascalbehmenburg/courrier:latest
+
+# Run the container
+docker run -d \
+  --name courrier \
+  -p 3000:3000 \
+  -v /path/to/your/config:/config \
+  -v /path/to/your/data:/data \
+  ghcr.io/pascalbehmenburg/courrier:latest
+```
+
+**Note:** If the repository is private, you'll need to authenticate first:
+
+```bash
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+### Building the Image Locally
+
+Alternatively, you can build the image from source:
 
 ```bash
 docker build -t courrier .
@@ -138,7 +174,32 @@ docker run -d \
 
 ### Docker Compose
 
-Create a `docker-compose.yml`:
+The easiest way to run Courrier is using Docker Compose with the pre-built image. See `docker-compose.example.yml` for a complete example.
+
+**Using Pre-built Image (Recommended):**
+
+Create a `docker-compose.yml` based on `docker-compose.example.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  courrier:
+    image: ghcr.io/pascalbehmenburg/courrier:latest
+    container_name: courrier
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    restart: unless-stopped
+    environment:
+      - COURRIER_DB_PATH=/data/courrier.db
+```
+
+**Building Locally:**
+
+If you prefer to build the image locally, use:
 
 ```yaml
 version: '3.8'

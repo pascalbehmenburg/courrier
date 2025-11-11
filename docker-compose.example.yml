@@ -1,6 +1,6 @@
 services:
   courrier:
-    build: .
+    image: ghcr.io/pascalbehmenburg/courrier:latest
     container_name: courrier
     ports:
       - "3000:3000"
