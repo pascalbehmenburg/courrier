@@ -1,7 +1,7 @@
 # Multi-stage build for Courrier email fetching service
 
 # Build stage
-FROM rust:latest as builder
+FROM rust:latest AS builder
 
 WORKDIR /build
 
@@ -16,8 +16,9 @@ RUN apt-get update && \
 # Copy manifest files
 COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
+# Copy source code and assets
 COPY src ./src
+COPY assets ./assets
 
 # Build the application
 RUN cargo build --release
