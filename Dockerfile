@@ -1,7 +1,7 @@
 # Multi-stage build for Courrier email fetching service
 
 # Build stage
-FROM rust:1.75-slim as builder
+FROM rust:latest as builder
 
 WORKDIR /build
 
