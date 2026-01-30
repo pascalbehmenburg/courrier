@@ -8,6 +8,15 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 
+fn print_gmail_troubleshooting() {
+    eprintln!("\nGmail troubleshooting:");
+    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
+    eprintln!("2. Use an App-Specific Password (not your regular password)");
+    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
+    eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
+    eprintln!("4. App passwords are 16 characters (may include spaces)");
+}
+
 fn fetch_message_body(
     session: &mut Session<TlsStream<TcpStream>>,
     uid: u32,
@@ -254,29 +263,14 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
                         );
                         eprintln!("   Error with '{}': {:?}", config.username, e);
                         eprintln!("   Error with '{}': {:?}", username_local, e2);
-                        eprintln!("\nGmail troubleshooting:");
-                        eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                        eprintln!("2. Use an App-Specific Password (not your regular password)");
-                        eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                        eprintln!(
-                            "3. If 2FA is disabled, enable it first (required for app passwords)"
-                        );
-                        eprintln!("4. App passwords are 16 characters (may include spaces)");
+                        print_gmail_troubleshooting();
                         Err(anyhow::anyhow!("Login failed: {:?}", e2.0))
                     }
                 }
             } else {
-                // For non-Gmail, just report the error
                 eprintln!("❌ Login failed for {}: {:?}", config.email, e);
                 if config.server == "imap.gmail.com" {
-                    eprintln!("\nGmail troubleshooting:");
-                    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                    eprintln!("2. Use an App-Specific Password (not your regular password)");
-                    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                    eprintln!(
-                        "3. If 2FA is disabled, enable it first (required for app passwords)"
-                    );
-                    eprintln!("4. App passwords are 16 characters (may include spaces)");
+                    print_gmail_troubleshooting();
                 }
                 Err(anyhow::anyhow!("Login failed: {:?}", e.0))
             }
@@ -342,4 +336,130 @@ pub async fn fetch_all_accounts(
     }
 
     Ok(total_saved)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AccountConfig;
+
+    fn create_test_account() -> AccountConfig {
+        AccountConfig {
+            email: "test@example.com".to_string(),
+            username: "test".to_string(),
+            password: "password".to_string(),
+            server: "imap.example.com".to_string(),
+            port: 993,
+        }
+    }
+
+    #[test]
+    fn test_account_config_creation() {
+        let account = create_test_account();
+        assert_eq!(account.email, "test@example.com");
+        assert_eq!(account.username, "test");
+        assert_eq!(account.password, "password");
+        assert_eq!(account.server, "imap.example.com");
+        assert_eq!(account.port, 993);
+    }
+
+    #[test]
+    fn test_account_config_clone() {
+        let account = create_test_account();
+        let cloned = account.clone();
+        assert_eq!(account.email, cloned.email);
+        assert_eq!(account.username, cloned.username);
+        assert_eq!(account.password, cloned.password);
+        assert_eq!(account.server, cloned.server);
+        assert_eq!(account.port, cloned.port);
+    }
+
+    #[test]
+    fn test_gmail_detection_with_at_symbol() {
+        let account = AccountConfig {
+            email: "user@gmail.com".to_string(),
+            username: "user@gmail.com".to_string(),
+            password: "password".to_string(),
+            server: "imap.gmail.com".to_string(),
+            port: 993,
+        };
+
+        assert!(account.server == "imap.gmail.com");
+        assert!(account.username.contains('@'));
+
+        let username_local = account.username.split('@').next().unwrap();
+        assert_eq!(username_local, "user");
+    }
+
+    #[test]
+    fn test_email_path_sanitization() {
+        let email = "user@example.com";
+        let sanitized = email.replace('@', "_");
+        assert_eq!(sanitized, "user_example.com");
+        assert!(!sanitized.contains('@'));
+    }
+
+    #[test]
+    fn test_eml_filename_generation() {
+        let uid: u32 = 12345;
+        let filename = format!("{}.eml", uid);
+        assert_eq!(filename, "12345.eml");
+    }
+
+    #[test]
+    fn test_path_construction() {
+        let output_dir = PathBuf::from("/emails");
+        let email = "user@example.com";
+        let mailbox = "INBOX";
+
+        let account_dir = output_dir.join(email.replace('@', "_"));
+        let mailbox_dir = account_dir.join(mailbox);
+
+        assert_eq!(
+            mailbox_dir.to_str().unwrap(),
+            "/emails/user_example.com/INBOX"
+        );
+    }
+
+    #[test]
+    fn test_uid_filtering() {
+        let all_uids: Vec<u32> = vec![1, 2, 3, 4, 5];
+        let fetched_set: std::collections::HashSet<u32> = vec![2, 4].into_iter().collect();
+
+        let uids_to_fetch: Vec<u32> = all_uids
+            .iter()
+            .filter(|uid| !fetched_set.contains(uid))
+            .copied()
+            .collect();
+
+        assert_eq!(uids_to_fetch, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn test_uid_filtering_empty_fetched() {
+        let all_uids: Vec<u32> = vec![1, 2, 3];
+        let fetched_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
+
+        let uids_to_fetch: Vec<u32> = all_uids
+            .iter()
+            .filter(|uid| !fetched_set.contains(uid))
+            .copied()
+            .collect();
+
+        assert_eq!(uids_to_fetch, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_uid_filtering_all_fetched() {
+        let all_uids: Vec<u32> = vec![1, 2, 3];
+        let fetched_set: std::collections::HashSet<u32> = vec![1, 2, 3].into_iter().collect();
+
+        let uids_to_fetch: Vec<u32> = all_uids
+            .iter()
+            .filter(|uid| !fetched_set.contains(uid))
+            .copied()
+            .collect();
+
+        assert!(uids_to_fetch.is_empty());
+    }
 }
