@@ -38,8 +38,15 @@ RUN apt-get update && \
 # Copy the binary from builder
 COPY --from=builder /build/target/release/courrier /usr/local/bin/courrier
 
-# Create directories for config and data
-RUN mkdir -p /config /data
+# Create a non-root user and the directories it needs to read/write.
+# Using a fixed UID/GID makes it easier to align host-side bind-mount
+# permissions across machines.
+RUN groupadd --system --gid 10001 courrier && \
+    useradd --system --uid 10001 --gid courrier --home-dir /config --shell /usr/sbin/nologin courrier && \
+    mkdir -p /config /data && \
+    chown -R courrier:courrier /config /data
+
+USER courrier
 
 # Set working directory to /config so Config.toml is found
 WORKDIR /config
