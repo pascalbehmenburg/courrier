@@ -182,7 +182,7 @@ async fn fetch_status_handler(
 
             if let Some(status) = db_status {
                 // Get completed_at from database - we need to query it directly
-                let conn = state.db.conn.lock().unwrap();
+                let conn = state.db.conn.lock();
                 let completed_at: Option<String> = conn
                     .query_row(
                         "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
@@ -233,7 +233,7 @@ async fn fetch_status_handler(
 
     if let Some(status) = db_status {
         // Get completed_at from database
-        let conn = state.db.conn.lock().unwrap();
+        let conn = state.db.conn.lock();
         let completed_at: Option<String> = conn
             .query_row(
                 "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub struct Database {
     pub conn: Arc<Mutex<Connection>>,
@@ -36,7 +37,7 @@ impl Database {
     }
 
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS fetched_emails (
@@ -88,7 +89,7 @@ impl Database {
         file_path: &Path,
         size_bytes: usize,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "INSERT OR REPLACE INTO fetched_emails 
@@ -107,7 +108,7 @@ impl Database {
     }
 
     pub fn get_fetched_uids(&self, account_email: &str, mailbox: &str) -> Result<Vec<u32>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT uid FROM fetched_emails 
              WHERE account_email = ?1 AND mailbox = ?2",
@@ -121,7 +122,7 @@ impl Database {
     }
 
     pub fn get_stats(&self) -> Result<Vec<EmailStats>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT 
                 account_email,
@@ -160,7 +161,7 @@ impl Database {
     }
 
     pub fn get_total_stats(&self) -> Result<(i64, i64)> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT 
                 COUNT(*) as total_count,
@@ -179,7 +180,7 @@ impl Database {
     }
 
     pub fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT started_at, completed_at, messages_fetched, status
              FROM fetch_history

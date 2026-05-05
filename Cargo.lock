@@ -213,6 +213,7 @@ dependencies = [
  "chrono",
  "imap",
  "native-tls",
+ "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",
