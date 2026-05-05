@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let app_config = config::load_config()?;
-    let accounts = config::extract_accounts(&app_config);
+    let accounts = app_config.accounts();
     info!("Loaded {} account(s) from Config.toml", accounts.len());
 
     // Create output directory from config

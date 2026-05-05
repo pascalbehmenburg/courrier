@@ -88,20 +88,19 @@ pub fn load_config() -> Result<AppConfig> {
     load_config_from_file(&config_path)
 }
 
-pub fn extract_accounts(config: &AppConfig) -> Vec<AccountConfig> {
-    let mut accounts = Vec::new();
-
-    for server in &config.servers {
-        for account in &server.accounts {
-            accounts.push(AccountConfig {
-                email: account.email.clone(),
-                username: account.username.clone(),
-                password: account.password.clone(),
-                server: server.host.clone(),
-                port: server.port,
-            });
-        }
+impl AppConfig {
+    pub fn accounts(&self) -> Vec<AccountConfig> {
+        self.servers
+            .iter()
+            .flat_map(|server| {
+                server.accounts.iter().map(|account| AccountConfig {
+                    email: account.email.clone(),
+                    username: account.username.clone(),
+                    password: account.password.clone(),
+                    server: server.host.clone(),
+                    port: server.port,
+                })
+            })
+            .collect()
     }
-
-    accounts
 }
