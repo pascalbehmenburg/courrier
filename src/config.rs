@@ -46,29 +46,12 @@ pub struct AppConfig {
     pub fetch_interval_seconds: Option<u64>,
     #[serde(default = "default_fetch_on_startup")]
     pub fetch_on_startup: bool,
-    pub(self) servers: Vec<ServerConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Config {
-    #[serde(default = "default_email_storage_path")]
-    email_storage_path: String,
-    fetch_interval_seconds: Option<u64>,
-    #[serde(default = "default_fetch_on_startup")]
-    fetch_on_startup: bool,
     servers: Vec<ServerConfig>,
 }
 
 pub fn load_config_from_file(config_path: &PathBuf) -> Result<AppConfig> {
     let config_content = fs::read_to_string(config_path)?;
-    let config: Config = toml::from_str(&config_content)?;
-
-    Ok(AppConfig {
-        email_storage_path: config.email_storage_path,
-        fetch_interval_seconds: config.fetch_interval_seconds,
-        fetch_on_startup: config.fetch_on_startup,
-        servers: config.servers,
-    })
+    Ok(toml::from_str(&config_content)?)
 }
 
 pub fn load_config() -> Result<AppConfig> {
