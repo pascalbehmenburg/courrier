@@ -476,6 +476,7 @@
             try {
                 const response = await fetch('/api/fetch', {
                     method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 });
 
                 const data = await response.json();

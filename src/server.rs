@@ -3,9 +3,10 @@ use crate::database::Database;
 use crate::fetcher::fetch_all_accounts;
 use anyhow::Result;
 use axum::{
-    extract::State,
+    extract::{Request, State},
     http::StatusCode,
-    response::{Html, Json},
+    middleware::{self, Next},
+    response::{Html, Json, Response},
     routing::{get, post},
     Router,
 };
@@ -259,6 +260,20 @@ async fn fetch_status_handler(
     }
 }
 
+/// CSRF guard for state-changing requests. Requires the `X-Requested-With`
+/// header on non-GET/HEAD requests. Browsers will not send this header on
+/// simple cross-origin form submissions, and adding it from JS triggers a
+/// CORS preflight that the server does not answer — so a malicious page the
+/// user visits cannot trigger a fetch via their dashboard origin.
+async fn require_xhr_header(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let method = req.method();
+    if method.is_safe() || req.headers().contains_key("x-requested-with") {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::FORBIDDEN)
+    }
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(dashboard_handler))
@@ -266,6 +281,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stats", get(stats_handler))
         .route("/api/fetch", post(fetch_handler))
         .route("/api/fetch/status", get(fetch_status_handler))
+        .layer(middleware::from_fn(require_xhr_header))
         .with_state(state)
 }
 
