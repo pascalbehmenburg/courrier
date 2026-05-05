@@ -58,31 +58,17 @@ fn sanitize_path_component(name: &str) -> String {
 fn fetch_message_body(
     session: &mut Session<TlsStream<TcpStream>>,
     uid: u32,
-    use_uid_fetch: bool,
 ) -> Result<Vec<u8>> {
     // Try BODY.PEEK[] first (most reliable, doesn't mark as seen)
-    let body = if use_uid_fetch {
-        match session.uid_fetch(uid.to_string(), "BODY.PEEK[]") {
-            Ok(msgs) => {
-                if let Some(msg) = msgs.iter().next() {
-                    msg.body().map(Vec::from)
-                } else {
-                    None
-                }
+    let body = match session.uid_fetch(uid.to_string(), "BODY.PEEK[]") {
+        Ok(msgs) => {
+            if let Some(msg) = msgs.iter().next() {
+                msg.body().map(Vec::from)
+            } else {
+                None
             }
-            Err(_) => None, // Will try RFC822 as fallback
         }
-    } else {
-        match session.fetch(uid.to_string(), "BODY.PEEK[]") {
-            Ok(msgs) => {
-                if let Some(msg) = msgs.iter().next() {
-                    msg.body().map(Vec::from)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None, // Will try RFC822 as fallback
-        }
+        Err(_) => None, // Will try RFC822 as fallback
     };
 
     // If BODY.PEEK[] succeeded, return the body
@@ -91,13 +77,7 @@ fn fetch_message_body(
     }
 
     // BODY.PEEK[] didn't work (either failed or returned no body), try RFC822
-    let rfc822_result = if use_uid_fetch {
-        session.uid_fetch(uid.to_string(), "RFC822")
-    } else {
-        session.fetch(uid.to_string(), "RFC822")
-    };
-
-    match rfc822_result {
+    match session.uid_fetch(uid.to_string(), "RFC822") {
         Ok(msgs) => {
             if let Some(msg) = msgs.iter().next() {
                 if let Some(body) = msg.body() {
@@ -201,7 +181,7 @@ pub async fn fetch_all_messages_from_mailbox(
                 );
                 std::io::stdout().flush().unwrap();
 
-                match fetch_message_body(&mut session, *uid, true) {
+                match fetch_message_body(&mut session, *uid) {
                     Ok(body) => {
                         // Save as .eml file
                         let filename = format!("{}.eml", uid);
