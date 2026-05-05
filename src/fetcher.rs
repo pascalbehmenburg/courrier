@@ -1,12 +1,40 @@
 use crate::config::AccountConfig;
 use crate::database::Database;
 use anyhow::Result;
-use imap::Session;
-use native_tls::TlsStream;
+use imap::{Client, Session};
+use native_tls::{TlsConnector, TlsStream};
 use std::fs;
 use std::io::Write;
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+const IMAP_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const IMAP_IO_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Open an IMAP-over-TLS connection with a bounded TCP-connect timeout and
+/// per-syscall read/write timeouts. The bare `imap::connect` helper uses
+/// `TcpStream::connect`, which can hang indefinitely against a slow or
+/// silently-dropped server and would block the global fetch slot forever.
+fn connect_with_timeout(
+    server: &str,
+    port: u16,
+    tls: &TlsConnector,
+) -> Result<Client<TlsStream<TcpStream>>> {
+    let addr = (server, port)
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no address resolved for {}:{}", server, port))?;
+    let stream = TcpStream::connect_timeout(&addr, IMAP_CONNECT_TIMEOUT)?;
+    stream.set_read_timeout(Some(IMAP_IO_TIMEOUT))?;
+    stream.set_write_timeout(Some(IMAP_IO_TIMEOUT))?;
+    let tls_stream = tls
+        .connect(server, stream)
+        .map_err(|e| anyhow::anyhow!("TLS handshake failed for {}: {:?}", server, e))?;
+    let mut client = Client::new(tls_stream);
+    client.read_greeting()?;
+    Ok(client)
+}
 
 /// Sanitize a string so it can be used as a single filesystem path component.
 /// Replaces path separators, control chars, and null bytes; collapses ".",
@@ -227,14 +255,10 @@ pub async fn fetch_all_messages_from_mailbox(
 
 // Synchronous version for use in blocking tasks
 fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<TcpStream>>> {
-    let tls = native_tls::TlsConnector::builder().build()?;
+    let tls = TlsConnector::builder().build()?;
     println!("Connecting to {}:{}", config.server, config.port);
 
-    let client = imap::connect(
-        (config.server.as_str(), config.port),
-        config.server.as_str(),
-        &tls,
-    )?;
+    let client = connect_with_timeout(&config.server, config.port, &tls)?;
     println!("Connected to {}", config.server);
     println!(
         "Logging in as {} (username: {})",
@@ -256,12 +280,8 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
                 );
 
                 // Reconnect for retry
-                let tls_retry = native_tls::TlsConnector::builder().build()?;
-                let retry_client = imap::connect(
-                    (config.server.as_str(), config.port),
-                    config.server.as_str(),
-                    &tls_retry,
-                )?;
+                let tls_retry = TlsConnector::builder().build()?;
+                let retry_client = connect_with_timeout(&config.server, config.port, &tls_retry)?;
 
                 match retry_client.login(username_local, &config.password) {
                     Ok(session) => {
