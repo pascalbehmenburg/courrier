@@ -137,10 +137,8 @@ async fn fetch_handler(
 async fn fetch_status_handler(
     State(state): State<AppState>,
 ) -> Result<Json<FetchStatusResponse>, StatusCode> {
-    // Decide whether a task is currently running and release the fetch_task
-    // lock before doing anything else. Otherwise dashboard polling (every 3s)
-    // would serialize against fetch_handler trying to start a new fetch, and
-    // would also block on every DB call made below.
+    // is_running comes from in-memory task state, not the DB row. The DB just
+    // supplies started_at, messages_fetched, and (once finished) completed_at.
     let task_running = {
         let mut task_handle = state.fetch_task.lock().await;
         match task_handle.as_ref() {
@@ -158,48 +156,24 @@ async fn fetch_status_handler(
         .get_latest_fetch_status()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if task_running {
-        if let Some(status) = db_status {
-            return Ok(Json(FetchStatusResponse {
-                is_running: true,
-                started_at: status.started_at.map(|dt| dt.to_rfc3339()),
-                completed_at: None,
-                messages_fetched: status.messages_fetched,
-            }));
-        }
-        return Ok(Json(FetchStatusResponse {
-            is_running: true,
-            started_at: None,
-            completed_at: None,
-            messages_fetched: 0,
-        }));
-    }
-
-    if let Some(status) = db_status {
-        let completed_at: Option<String> = {
-            let conn = state.db.conn.lock();
-            conn.query_row(
-                "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
-                [],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .ok()
-            .flatten()
-        };
-        Ok(Json(FetchStatusResponse {
-            is_running: false,
-            started_at: status.started_at.map(|dt| dt.to_rfc3339()),
-            completed_at,
-            messages_fetched: status.messages_fetched,
-        }))
-    } else {
-        Ok(Json(FetchStatusResponse {
-            is_running: false,
-            started_at: None,
-            completed_at: None,
-            messages_fetched: 0,
-        }))
-    }
+    Ok(Json(FetchStatusResponse {
+        is_running: task_running,
+        started_at: db_status
+            .as_ref()
+            .and_then(|s| s.started_at)
+            .map(|dt| dt.to_rfc3339()),
+        // Suppress completed_at while a task is running — the DB row may still
+        // hold the previous run's completion timestamp.
+        completed_at: if task_running {
+            None
+        } else {
+            db_status
+                .as_ref()
+                .and_then(|s| s.completed_at)
+                .map(|dt| dt.to_rfc3339())
+        },
+        messages_fetched: db_status.as_ref().map(|s| s.messages_fetched).unwrap_or(0),
+    }))
 }
 
 /// CSRF guard for state-changing requests. Requires the `X-Requested-With`

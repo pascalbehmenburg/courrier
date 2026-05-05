@@ -23,6 +23,7 @@ pub struct FetchStatus {
     #[expect(unused)]
     pub is_running: bool,
     pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
     pub messages_fetched: i64,
 }
 
@@ -231,15 +232,19 @@ impl Database {
             let messages_fetched: i64 = row.get(2)?;
             let status: String = row.get(3)?;
 
-            let started_at = DateTime::parse_from_rfc3339(&started_at_str)
-                .ok()
-                .map(|dt| dt.with_timezone(&Utc));
-
+            let parse = |s: &str| {
+                DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            };
+            let started_at = parse(&started_at_str);
+            let completed_at = completed_at_str.as_deref().and_then(parse);
             let is_running = completed_at_str.is_none() && status == "running";
 
             Ok(FetchStatus {
                 is_running,
                 started_at,
+                completed_at,
                 messages_fetched,
             })
         })?;
