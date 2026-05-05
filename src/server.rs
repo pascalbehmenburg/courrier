@@ -121,28 +121,17 @@ async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsRespon
 async fn fetch_handler(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // Check if a fetch is already running
-    let mut task_handle = state.fetch_task.lock().await;
-    if task_handle.is_some() {
-        return Ok(Json(serde_json::json!({
+    if trigger_fetch(&state).await {
+        Ok(Json(serde_json::json!({
+            "status": "started",
+            "message": "Fetch operation started (all mailboxes will be fetched)"
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
             "status": "already_running",
             "message": "A fetch operation is already in progress"
-        })));
+        })))
     }
-
-    let accounts = state.config.clone();
-    let output_dir = state.output_dir.clone();
-    let db = Arc::clone(&state.db);
-
-    // Spawn fetch task - fetch all mailboxes automatically
-    let handle = tokio::spawn(async move { fetch_all_accounts(&accounts, &output_dir, &db).await });
-
-    *task_handle = Some(handle);
-
-    Ok(Json(serde_json::json!({
-        "status": "started",
-        "message": "Fetch operation started (all mailboxes will be fetched)"
-    })))
 }
 
 async fn fetch_status_handler(
@@ -264,27 +253,28 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn trigger_fetch(state: &AppState) {
+/// Spawn a fetch task if one isn't already running. Returns `true` if a new
+/// task was spawned, `false` if a fetch was already in flight.
+async fn trigger_fetch(state: &AppState) -> bool {
     let mut task_handle = state.fetch_task.lock().await;
     if task_handle.is_some() {
-        return; // Already running
+        return false;
     }
 
     let accounts = state.config.clone();
     let output_dir = state.output_dir.clone();
     let db = Arc::clone(&state.db);
 
-    // Spawn fetch task - fetch all mailboxes automatically
     let handle = tokio::spawn(async move { fetch_all_accounts(&accounts, &output_dir, &db).await });
-
     *task_handle = Some(handle);
+    true
 }
 
 pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) -> Result<()> {
     // Trigger fetch on startup if configured
     if fetch_on_startup {
         println!("Starting initial fetch on startup...");
-        trigger_fetch(&state).await;
+        let _ = trigger_fetch(&state).await;
     }
 
     // Start periodic fetch task if interval is configured
@@ -299,7 +289,7 @@ pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) ->
             loop {
                 interval.tick().await;
                 println!("Periodic fetch triggered (interval: {}s)", interval_seconds);
-                trigger_fetch(&state_clone).await;
+                let _ = trigger_fetch(&state_clone).await;
             }
         });
         println!("Periodic fetch enabled: every {} seconds", interval_seconds);
