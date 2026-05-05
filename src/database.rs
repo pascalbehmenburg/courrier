@@ -5,6 +5,7 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
 }
@@ -66,13 +67,13 @@ impl Database {
         )?;
 
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fetched_emails_lookup 
+            "CREATE INDEX IF NOT EXISTS idx_fetched_emails_lookup
              ON fetched_emails(account_email, mailbox, uid)",
             [],
         )?;
 
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fetched_emails_stats 
+            "CREATE INDEX IF NOT EXISTS idx_fetched_emails_stats
              ON fetched_emails(account_email, mailbox)",
             [],
         )?;
@@ -80,7 +81,24 @@ impl Database {
         Ok(())
     }
 
-    pub fn mark_email_fetched(
+    /// Run a closure with the SQLite connection on a blocking thread, so the
+    /// tokio runtime worker isn't held while sqlite does its (synchronous)
+    /// work. Closures own their inputs (clones of caller-supplied strings),
+    /// which is the price for the 'static bound spawn_blocking requires.
+    async fn run<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&Connection) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock();
+            f(&conn)
+        })
+        .await?
+    }
+
+    pub async fn mark_email_fetched(
         &self,
         account_email: &str,
         mailbox: &str,
@@ -88,164 +106,180 @@ impl Database {
         file_path: &Path,
         size_bytes: usize,
     ) -> Result<()> {
-        let conn = self.conn.lock();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT OR REPLACE INTO fetched_emails 
-             (account_email, mailbox, uid, file_path, size_bytes, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                account_email,
-                mailbox,
-                uid,
-                file_path.to_string_lossy(),
-                size_bytes as i64,
-                now
-            ],
-        )?;
-        Ok(())
+        let account_email = account_email.to_string();
+        let mailbox = mailbox.to_string();
+        let file_path = file_path.to_string_lossy().into_owned();
+        let size_bytes = size_bytes as i64;
+        self.run(move |conn| {
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT OR REPLACE INTO fetched_emails
+                 (account_email, mailbox, uid, file_path, size_bytes, fetched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![account_email, mailbox, uid, file_path, size_bytes, now],
+            )?;
+            Ok(())
+        })
+        .await
     }
 
-    pub fn get_fetched_uids(&self, account_email: &str, mailbox: &str) -> Result<Vec<u32>> {
-        let conn = self.conn.lock();
-        let mut stmt = conn.prepare(
-            "SELECT uid FROM fetched_emails 
-             WHERE account_email = ?1 AND mailbox = ?2",
-        )?;
-        let uids: Result<Vec<u32>, _> = stmt
-            .query_map(params![account_email, mailbox], |row| {
-                Ok(row.get::<_, i64>(0)? as u32)
-            })?
-            .collect();
-        Ok(uids?)
+    pub async fn get_fetched_uids(&self, account_email: &str, mailbox: &str) -> Result<Vec<u32>> {
+        let account_email = account_email.to_string();
+        let mailbox = mailbox.to_string();
+        self.run(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT uid FROM fetched_emails
+                 WHERE account_email = ?1 AND mailbox = ?2",
+            )?;
+            let uids: Result<Vec<u32>, _> = stmt
+                .query_map(params![account_email, mailbox], |row| {
+                    Ok(row.get::<_, i64>(0)? as u32)
+                })?
+                .collect();
+            Ok(uids?)
+        })
+        .await
     }
 
-    pub fn get_stats(&self) -> Result<Vec<EmailStats>> {
-        let conn = self.conn.lock();
-        let mut stmt = conn.prepare(
-            "SELECT 
-                account_email,
-                mailbox,
-                COUNT(*) as count,
-                SUM(size_bytes) as total_size_bytes,
-                MAX(fetched_at) as last_fetch
-             FROM fetched_emails
-             GROUP BY account_email, mailbox
-             ORDER BY account_email, mailbox",
-        )?;
-
-        let stats: Result<Vec<EmailStats>, _> = stmt
-            .query_map([], |row| {
-                let account_email: String = row.get(0)?;
-                let mailbox: String = row.get(1)?;
-                let count: i64 = row.get(2)?;
-                let total_size_bytes: Option<i64> = row.get(3)?;
-                let last_fetch_str: Option<String> = row.get(4)?;
-
-                let last_fetch = last_fetch_str
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc));
-
-                Ok(EmailStats {
+    pub async fn get_stats(&self) -> Result<Vec<EmailStats>> {
+        self.run(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT
                     account_email,
                     mailbox,
-                    count,
-                    total_size_bytes: total_size_bytes.unwrap_or(0),
-                    last_fetch,
-                })
-            })?
-            .collect();
+                    COUNT(*) as count,
+                    SUM(size_bytes) as total_size_bytes,
+                    MAX(fetched_at) as last_fetch
+                 FROM fetched_emails
+                 GROUP BY account_email, mailbox
+                 ORDER BY account_email, mailbox",
+            )?;
 
-        Ok(stats?)
+            let stats: Result<Vec<EmailStats>, _> = stmt
+                .query_map([], |row| {
+                    let account_email: String = row.get(0)?;
+                    let mailbox: String = row.get(1)?;
+                    let count: i64 = row.get(2)?;
+                    let total_size_bytes: Option<i64> = row.get(3)?;
+                    let last_fetch_str: Option<String> = row.get(4)?;
+
+                    let last_fetch = last_fetch_str
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc));
+
+                    Ok(EmailStats {
+                        account_email,
+                        mailbox,
+                        count,
+                        total_size_bytes: total_size_bytes.unwrap_or(0),
+                        last_fetch,
+                    })
+                })?
+                .collect();
+
+            Ok(stats?)
+        })
+        .await
     }
 
-    pub fn get_total_stats(&self) -> Result<(i64, i64)> {
-        let conn = self.conn.lock();
-        let mut stmt = conn.prepare(
-            "SELECT 
-                COUNT(*) as total_count,
-                SUM(size_bytes) as total_size_bytes
-             FROM fetched_emails",
-        )?;
+    pub async fn get_total_stats(&self) -> Result<(i64, i64)> {
+        self.run(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT
+                    COUNT(*) as total_count,
+                    SUM(size_bytes) as total_size_bytes
+                 FROM fetched_emails",
+            )?;
 
-        let row = stmt.query_row([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, Option<i64>>(1)?.unwrap_or(0),
-            ))
-        })?;
+            let row = stmt.query_row([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                ))
+            })?;
 
-        Ok(row)
+            Ok(row)
+        })
+        .await
     }
 
     /// Record the start of a fetch run and return its row id. Per-account
     /// columns are not used at the run level (one row covers the whole run);
     /// the schema requires NOT NULL so we store empty strings.
-    pub fn start_fetch_run(&self) -> Result<i64> {
-        let conn = self.conn.lock();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT INTO fetch_history (account_email, mailbox, started_at, status)
-             VALUES ('', '', ?1, 'running')",
-            params![now],
-        )?;
-        Ok(conn.last_insert_rowid())
+    pub async fn start_fetch_run(&self) -> Result<i64> {
+        self.run(|conn| {
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT INTO fetch_history (account_email, mailbox, started_at, status)
+                 VALUES ('', '', ?1, 'running')",
+                params![now],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
     }
 
-    pub fn record_fetch_run_progress(&self, run_id: i64, additional: i64) -> Result<()> {
-        let conn = self.conn.lock();
-        conn.execute(
-            "UPDATE fetch_history
-             SET messages_fetched = messages_fetched + ?1
-             WHERE id = ?2",
-            params![additional, run_id],
-        )?;
-        Ok(())
+    pub async fn record_fetch_run_progress(&self, run_id: i64, additional: i64) -> Result<()> {
+        self.run(move |conn| {
+            conn.execute(
+                "UPDATE fetch_history
+                 SET messages_fetched = messages_fetched + ?1
+                 WHERE id = ?2",
+                params![additional, run_id],
+            )?;
+            Ok(())
+        })
+        .await
     }
 
-    pub fn complete_fetch_run(&self, run_id: i64, status: &str) -> Result<()> {
-        let conn = self.conn.lock();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE fetch_history
-             SET completed_at = ?1, status = ?2
-             WHERE id = ?3",
-            params![now, status, run_id],
-        )?;
-        Ok(())
+    pub async fn complete_fetch_run(&self, run_id: i64, status: &str) -> Result<()> {
+        let status = status.to_string();
+        self.run(move |conn| {
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE fetch_history
+                 SET completed_at = ?1, status = ?2
+                 WHERE id = ?3",
+                params![now, status, run_id],
+            )?;
+            Ok(())
+        })
+        .await
     }
 
-    pub fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
-        let conn = self.conn.lock();
-        let mut stmt = conn.prepare(
-            "SELECT started_at, completed_at, messages_fetched
-             FROM fetch_history
-             ORDER BY started_at DESC
-             LIMIT 1",
-        )?;
+    pub async fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
+        self.run(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT started_at, completed_at, messages_fetched
+                 FROM fetch_history
+                 ORDER BY started_at DESC
+                 LIMIT 1",
+            )?;
 
-        let mut rows = stmt.query_map([], |row| {
-            let started_at_str: String = row.get(0)?;
-            let completed_at_str: Option<String> = row.get(1)?;
-            let messages_fetched: i64 = row.get(2)?;
+            let mut rows = stmt.query_map([], |row| {
+                let started_at_str: String = row.get(0)?;
+                let completed_at_str: Option<String> = row.get(1)?;
+                let messages_fetched: i64 = row.get(2)?;
 
-            let parse = |s: &str| {
-                DateTime::parse_from_rfc3339(s)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&Utc))
-            };
+                let parse = |s: &str| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&Utc))
+                };
 
-            Ok(FetchStatus {
-                started_at: parse(&started_at_str),
-                completed_at: completed_at_str.as_deref().and_then(parse),
-                messages_fetched,
-            })
-        })?;
+                Ok(FetchStatus {
+                    started_at: parse(&started_at_str),
+                    completed_at: completed_at_str.as_deref().and_then(parse),
+                    messages_fetched,
+                })
+            })?;
 
-        if let Some(row) = rows.next() {
-            Ok(Some(row?))
-        } else {
-            Ok(None)
-        }
+            if let Some(row) = rows.next() {
+                Ok(Some(row?))
+            } else {
+                Ok(None)
+            }
+        })
+        .await
     }
 }

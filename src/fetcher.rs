@@ -89,7 +89,7 @@ pub async fn fetch_all_messages_from_mailbox(
     db: &Database,
 ) -> Result<usize> {
     // Get already fetched UIDs from database first (before blocking task)
-    let fetched_uids = db.get_fetched_uids(&config.email, mailbox_name)?;
+    let fetched_uids = db.get_fetched_uids(&config.email, mailbox_name).await?;
     let fetched_set: std::collections::HashSet<u32> = fetched_uids.into_iter().collect();
 
     // Prepare data for blocking task
@@ -202,8 +202,9 @@ pub async fn fetch_all_messages_from_mailbox(
 
     // Update database with fetched emails (do this after blocking task)
     for (uid, filepath, size_bytes) in saved_uids {
-        if let Err(e) =
-            db.mark_email_fetched(&config.email, mailbox_name, uid, &filepath, size_bytes)
+        if let Err(e) = db
+            .mark_email_fetched(&config.email, mailbox_name, uid, &filepath, size_bytes)
+            .await
         {
             eprintln!("✗ Failed to record UID {} in database: {:?}", uid, e);
         }
@@ -291,10 +292,10 @@ pub async fn fetch_all_accounts(
     output_dir: &Path,
     db: &Database,
 ) -> Result<usize> {
-    let run_id = db.start_fetch_run()?;
+    let run_id = db.start_fetch_run().await?;
     let result = fetch_all_accounts_inner(accounts, output_dir, db, run_id).await;
     let final_status = if result.is_ok() { "completed" } else { "failed" };
-    if let Err(e) = db.complete_fetch_run(run_id, final_status) {
+    if let Err(e) = db.complete_fetch_run(run_id, final_status).await {
         eprintln!("✗ Failed to mark fetch run {} complete: {:?}", run_id, e);
     }
     result
@@ -347,7 +348,7 @@ async fn fetch_all_accounts_inner(
                         count, account.email, mailbox
                     );
                     total_saved += count;
-                    if let Err(e) = db.record_fetch_run_progress(run_id, count as i64) {
+                    if let Err(e) = db.record_fetch_run_progress(run_id, count as i64).await {
                         eprintln!("✗ Failed to record fetch progress: {:?}", e);
                     }
                 }

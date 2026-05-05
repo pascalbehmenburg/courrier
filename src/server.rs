@@ -93,10 +93,12 @@ async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsRespon
     let stats = state
         .db
         .get_stats()
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let (total_emails, total_storage_bytes) = state
         .db
         .get_total_stats()
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let per_account_stats: Vec<AccountStats> = stats
@@ -154,6 +156,7 @@ async fn fetch_status_handler(
     let db_status = state
         .db
         .get_latest_fetch_status()
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(FetchStatusResponse {
