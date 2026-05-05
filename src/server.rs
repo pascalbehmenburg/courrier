@@ -137,82 +137,55 @@ async fn fetch_handler(
 async fn fetch_status_handler(
     State(state): State<AppState>,
 ) -> Result<Json<FetchStatusResponse>, StatusCode> {
-    // Check if task is still running
-    let mut task_handle = state.fetch_task.lock().await;
-
-    if let Some(ref handle) = *task_handle {
-        if handle.is_finished() {
-            // Task completed, clean up
-            let _ = task_handle.take();
-            let db_status = state
-                .db
-                .get_latest_fetch_status()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-            if let Some(status) = db_status {
-                // Get completed_at from database - we need to query it directly
-                let conn = state.db.conn.lock();
-                let completed_at: Option<String> = conn
-                    .query_row(
-                        "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
-                        [],
-                        |row| row.get::<_, Option<String>>(0),
-                    )
-                    .ok()
-                    .flatten();
-                drop(conn);
-
-                return Ok(Json(FetchStatusResponse {
-                    is_running: false,
-                    started_at: status.started_at.map(|dt| dt.to_rfc3339()),
-                    completed_at,
-                    messages_fetched: status.messages_fetched,
-                }));
+    // Decide whether a task is currently running and release the fetch_task
+    // lock before doing anything else. Otherwise dashboard polling (every 3s)
+    // would serialize against fetch_handler trying to start a new fetch, and
+    // would also block on every DB call made below.
+    let task_running = {
+        let mut task_handle = state.fetch_task.lock().await;
+        match task_handle.as_ref() {
+            Some(handle) if handle.is_finished() => {
+                let _ = task_handle.take();
+                false
             }
-
-            return Ok(Json(FetchStatusResponse {
-                is_running: false,
-                started_at: None,
-                completed_at: None,
-                messages_fetched: 0,
-            }));
-        } else {
-            // Task still running
-            let db_status = state
-                .db
-                .get_latest_fetch_status()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-            if let Some(status) = db_status {
-                return Ok(Json(FetchStatusResponse {
-                    is_running: true,
-                    started_at: status.started_at.map(|dt| dt.to_rfc3339()),
-                    completed_at: None,
-                    messages_fetched: status.messages_fetched,
-                }));
-            }
+            Some(_) => true,
+            None => false,
         }
-    }
+    };
 
-    // No active task
     let db_status = state
         .db
         .get_latest_fetch_status()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    if task_running {
+        if let Some(status) = db_status {
+            return Ok(Json(FetchStatusResponse {
+                is_running: true,
+                started_at: status.started_at.map(|dt| dt.to_rfc3339()),
+                completed_at: None,
+                messages_fetched: status.messages_fetched,
+            }));
+        }
+        return Ok(Json(FetchStatusResponse {
+            is_running: true,
+            started_at: None,
+            completed_at: None,
+            messages_fetched: 0,
+        }));
+    }
+
     if let Some(status) = db_status {
-        // Get completed_at from database
-        let conn = state.db.conn.lock();
-        let completed_at: Option<String> = conn
-            .query_row(
+        let completed_at: Option<String> = {
+            let conn = state.db.conn.lock();
+            conn.query_row(
                 "SELECT completed_at FROM fetch_history ORDER BY started_at DESC LIMIT 1",
                 [],
                 |row| row.get::<_, Option<String>>(0),
             )
             .ok()
-            .flatten();
-        drop(conn);
-
+            .flatten()
+        };
         Ok(Json(FetchStatusResponse {
             is_running: false,
             started_at: status.started_at.map(|dt| dt.to_rfc3339()),
