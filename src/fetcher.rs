@@ -59,48 +59,27 @@ fn fetch_message_body(
     session: &mut Session<TlsStream<TcpStream>>,
     uid: u32,
 ) -> Result<Vec<u8>> {
-    // Try BODY.PEEK[] first (most reliable, doesn't mark as seen)
-    let body = match session.uid_fetch(uid.to_string(), "BODY.PEEK[]") {
-        Ok(msgs) => {
-            if let Some(msg) = msgs.iter().next() {
-                msg.body().map(Vec::from)
-            } else {
-                None
-            }
-        }
-        Err(_) => None, // Will try RFC822 as fallback
-    };
+    // BODY.PEEK[] is preferred — it doesn't mark the message as seen — but
+    // some servers don't support it; fall back to RFC822 in that case.
+    fn try_fetch(
+        session: &mut Session<TlsStream<TcpStream>>,
+        uid: u32,
+        query: &str,
+    ) -> Option<Vec<u8>> {
+        let msgs = session.uid_fetch(uid.to_string(), query).ok()?;
+        let msg = msgs.iter().next()?;
+        msg.body().map(Vec::from)
+    }
 
-    // If BODY.PEEK[] succeeded, return the body
-    if let Some(body) = body {
+    if let Some(body) = try_fetch(session, uid, "BODY.PEEK[]") {
         return Ok(body);
     }
-
-    // BODY.PEEK[] didn't work (either failed or returned no body), try RFC822
-    match session.uid_fetch(uid.to_string(), "RFC822") {
-        Ok(msgs) => {
-            if let Some(msg) = msgs.iter().next() {
-                if let Some(body) = msg.body() {
-                    Ok(Vec::from(body))
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to fetch message body for UID {}: BODY.PEEK[] and RFC822 both returned no body",
-                        uid
-                    ))
-                }
-            } else {
-                Err(anyhow::anyhow!(
-                    "Failed to fetch message body for UID {}: BODY.PEEK[] and RFC822 both returned no messages",
-                    uid
-                ))
-            }
-        }
-        Err(e) => Err(anyhow::anyhow!(
-            "Failed to fetch message body for UID {}: BODY.PEEK[] and RFC822 both failed. Last error: {:?}",
-            uid,
-            e
-        )),
-    }
+    try_fetch(session, uid, "RFC822").ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to fetch message body for UID {}: BODY.PEEK[] and RFC822 both returned no data",
+            uid
+        )
+    })
 }
 
 pub async fn fetch_all_messages_from_mailbox(
