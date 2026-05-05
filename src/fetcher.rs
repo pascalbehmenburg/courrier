@@ -8,6 +8,25 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 
+/// Sanitize a string so it can be used as a single filesystem path component.
+/// Replaces path separators, control chars, and null bytes; collapses ".",
+/// "..", and empty strings to "_". Necessary because mailbox names come from
+/// the IMAP server and are otherwise joined directly into output paths.
+fn sanitize_path_component(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    match cleaned.as_str() {
+        "" | "." | ".." => "_".to_string(),
+        _ => cleaned,
+    }
+}
+
 fn fetch_message_body(
     session: &mut Session<TlsStream<TcpStream>>,
     uid: u32,
@@ -137,9 +156,11 @@ pub async fn fetch_all_messages_from_mailbox(
         let mut saved_uids: Vec<(u32, PathBuf, usize)> = Vec::new();
 
         if !uids_to_fetch.is_empty() {
-            // Create output directory for this account/mailbox
-            let account_dir = output_dir_clone.join(email_clone.replace("@", "_"));
-            let mailbox_dir = account_dir.join(mailbox_name_str.as_str());
+            // Create output directory for this account/mailbox. Both segments
+            // are sanitized: mailbox name is supplied by the IMAP server and
+            // could contain path separators or "..".
+            let account_dir = output_dir_clone.join(sanitize_path_component(&email_clone));
+            let mailbox_dir = account_dir.join(sanitize_path_component(&mailbox_name_str));
             fs::create_dir_all(&mailbox_dir)?;
             println!("Saving messages to: {}", mailbox_dir.display());
 
