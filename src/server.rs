@@ -14,6 +14,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -223,7 +224,7 @@ async fn trigger_fetch(state: &AppState) -> bool {
 pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) -> Result<()> {
     // Trigger fetch on startup if configured
     if fetch_on_startup {
-        println!("Starting initial fetch on startup...");
+        info!("Starting initial fetch on startup");
         let _ = trigger_fetch(&state).await;
     }
 
@@ -238,16 +239,16 @@ pub async fn start_server(state: AppState, port: u16, fetch_on_startup: bool) ->
 
             loop {
                 interval.tick().await;
-                println!("Periodic fetch triggered (interval: {}s)", interval_seconds);
+                info!(interval_seconds, "Periodic fetch triggered");
                 let _ = trigger_fetch(&state_clone).await;
             }
         });
-        println!("Periodic fetch enabled: every {} seconds", interval_seconds);
+        info!("Periodic fetch enabled: every {} seconds", interval_seconds);
     }
 
     let app = create_router(state);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    println!("🚀 Courrier dashboard running on http://0.0.0.0:{}", port);
+    info!("Courrier dashboard running on http://0.0.0.0:{}", port);
     axum::serve(listener, app).await?;
     Ok(())
 }

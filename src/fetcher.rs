@@ -4,10 +4,10 @@ use anyhow::Result;
 use imap::{Client, Session};
 use native_tls::{TlsConnector, TlsStream};
 use std::fs;
-use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tracing::{debug, error, info, warn};
 
 const IMAP_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const IMAP_IO_TIMEOUT: Duration = Duration::from_secs(120);
@@ -103,38 +103,37 @@ pub async fn fetch_all_messages_from_mailbox(
         let mut session = connect_and_login_sync(&config_clone)?;
 
         // Select/examine the mailbox
-        println!("Selecting mailbox: {}...", mailbox_name_str);
+        debug!("Selecting mailbox: {}", mailbox_name_str);
         let mailbox = match session.select(mailbox_name_str.as_str()) {
             Ok(m) => m,
             Err(_) => {
-                println!("Select failed, trying EXAMINE...");
+                debug!("Select failed, trying EXAMINE");
                 session.examine(mailbox_name_str.as_str())?
             }
         };
 
-        println!(
-            "✓ Selected {} ({} messages)",
-            mailbox_name_str, mailbox.exists
+        info!(
+            mailbox = %mailbox_name_str,
+            messages = mailbox.exists,
+            "Selected mailbox"
         );
 
         // Get all UIDs that are NOT DELETED
         // Using "NOT DELETED" instead of "ALL" to ensure we get all messages
         // that are actually available (Gmail and other servers may filter "ALL")
         let uids = session.uid_search("NOT DELETED")?;
-        println!("Found {} messages to fetch (NOT DELETED)", uids.len());
-
-        // Filter out already fetched UIDs
         let fetched_set_clone = fetched_set.clone();
         let uids_to_fetch: Vec<u32> = uids
             .iter()
             .filter(|uid| !fetched_set_clone.contains(uid))
             .copied()
             .collect();
-
-        println!(
-            "Already fetched: {}, New to fetch: {}",
-            fetched_set_clone.len(),
-            uids_to_fetch.len()
+        info!(
+            mailbox = %mailbox_name_str,
+            visible = uids.len(),
+            already_fetched = fetched_set_clone.len(),
+            new = uids_to_fetch.len(),
+            "Mailbox UID survey"
         );
 
         // Fetch all messages in this blocking task
@@ -149,16 +148,15 @@ pub async fn fetch_all_messages_from_mailbox(
             let account_dir = output_dir_clone.join(sanitize_path_component(&email_clone));
             let mailbox_dir = account_dir.join(sanitize_path_component(&mailbox_name_str));
             fs::create_dir_all(&mailbox_dir)?;
-            println!("Saving messages to: {}", mailbox_dir.display());
+            debug!("Saving messages to: {}", mailbox_dir.display());
 
             for (idx, uid) in uids_to_fetch.iter().enumerate() {
-                print!(
-                    "\rFetching message {}/{} (UID: {})...",
+                debug!(
+                    "Fetching message {}/{} (UID: {})",
                     idx + 1,
                     uids_to_fetch.len(),
                     uid
                 );
-                std::io::stdout().flush().unwrap();
 
                 match fetch_message_body(&mut session, *uid) {
                     Ok(body) => {
@@ -173,24 +171,26 @@ pub async fn fetch_all_messages_from_mailbox(
                                 saved_uids.push((*uid, filepath, size_bytes));
                             }
                             Err(e) => {
-                                eprintln!("\n✗ Failed to save {}: {:?}", filepath.display(), e);
+                                error!("Failed to save {}: {:?}", filepath.display(), e);
                                 failed_count += 1;
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("\n✗ Failed to fetch UID {}: {:?}", uid, e);
+                        error!("Failed to fetch UID {}: {:?}", uid, e);
                         failed_count += 1;
                     }
                 }
             }
 
-            println!(
-                "\n✓ Completed: {} saved, {} failed",
-                saved_count, failed_count
+            info!(
+                mailbox = %mailbox_name_str,
+                saved = saved_count,
+                failed = failed_count,
+                "Mailbox fetch completed"
             );
         } else {
-            println!("No new messages to fetch");
+            debug!(mailbox = %mailbox_name_str, "No new messages to fetch");
         }
 
         // Logout (ignore errors)
@@ -206,7 +206,7 @@ pub async fn fetch_all_messages_from_mailbox(
             .mark_email_fetched(&config.email, mailbox_name, uid, &filepath, size_bytes)
             .await
         {
-            eprintln!("✗ Failed to record UID {} in database: {:?}", uid, e);
+            error!("Failed to record UID {} in database: {:?}", uid, e);
         }
     }
 
@@ -228,20 +228,25 @@ fn try_login(
         .map_err(|(e, _)| anyhow::anyhow!("login failed for {}: {:?}", username, e))
 }
 
-fn print_gmail_troubleshooting() {
-    eprintln!("\nGmail troubleshooting:");
-    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-    eprintln!("2. Use an App-Specific Password (not your regular password)");
-    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-    eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
-    eprintln!("4. App passwords are 16 characters (may include spaces)");
+fn log_gmail_troubleshooting() {
+    warn!(
+        "Gmail troubleshooting:\n\
+         1. Ensure IMAP is enabled in Gmail settings\n\
+         2. Use an App-Specific Password (not your regular password). \
+            Generate one at: https://myaccount.google.com/apppasswords\n\
+         3. If 2FA is disabled, enable it first (required for app passwords)\n\
+         4. App passwords are 16 characters (may include spaces)"
+    );
 }
 
 // Synchronous version for use in blocking tasks
 fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<TcpStream>>> {
-    println!(
-        "Connecting to {}:{} as {} (username: {})",
-        config.server, config.port, config.email, config.username
+    info!(
+        server = %config.server,
+        port = config.port,
+        email = %config.email,
+        username = %config.username,
+        "Connecting to IMAP server"
     );
 
     let first_err = match try_login(
@@ -251,7 +256,7 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
         &config.password,
     ) {
         Ok(session) => {
-            println!("✓ Successfully logged in!");
+            info!(email = %config.email, "Login succeeded");
             return Ok(session);
         }
         Err(e) => e,
@@ -261,28 +266,27 @@ fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<Tc
     // part — some account types only accept that form.
     if config.server == "imap.gmail.com" && config.username.contains('@') {
         let username_local = config.username.split('@').next().unwrap();
-        println!("Retrying with local username: {}", username_local);
+        info!("Retrying Gmail login with local username: {}", username_local);
         match try_login(&config.server, config.port, username_local, &config.password) {
             Ok(session) => {
-                println!("✓ Successfully logged in with local username!");
+                info!(email = %config.email, "Login succeeded with local username");
                 return Ok(session);
             }
             Err(e2) => {
-                eprintln!(
-                    "❌ Login failed for {} with both '{}' and '{}'",
-                    config.email, config.username, username_local
+                error!(
+                    email = %config.email,
+                    "Login failed with both '{}' and '{}'. Original: {:?}. Retry: {:?}",
+                    config.username, username_local, first_err, e2,
                 );
-                eprintln!("   Original error: {:?}", first_err);
-                eprintln!("   Retry error:    {:?}", e2);
-                print_gmail_troubleshooting();
+                log_gmail_troubleshooting();
                 return Err(e2);
             }
         }
     }
 
-    eprintln!("❌ Login failed for {}: {:?}", config.email, first_err);
+    error!(email = %config.email, "Login failed: {:?}", first_err);
     if config.server == "imap.gmail.com" {
-        print_gmail_troubleshooting();
+        log_gmail_troubleshooting();
     }
     Err(first_err)
 }
@@ -296,7 +300,7 @@ pub async fn fetch_all_accounts(
     let result = fetch_all_accounts_inner(accounts, output_dir, db, run_id).await;
     let final_status = if result.is_ok() { "completed" } else { "failed" };
     if let Err(e) = db.complete_fetch_run(run_id, final_status).await {
-        eprintln!("✗ Failed to mark fetch run {} complete: {:?}", run_id, e);
+        error!("Failed to mark fetch run {} complete: {:?}", run_id, e);
     }
     result
 }
@@ -310,52 +314,45 @@ async fn fetch_all_accounts_inner(
     let mut total_saved = 0;
 
     for account in accounts {
-        println!("\n{}", "=".repeat(80));
-        println!("Processing account: {}", account.email);
-        println!("{}", "=".repeat(80));
+        info!(account = %account.email, "Processing account");
 
         // Get all mailboxes from LIST command
         let account_clone = account.clone();
         let mailboxes = tokio::task::spawn_blocking(move || {
             let mut session = connect_and_login_sync(&account_clone)?;
-            println!("Listing all mailboxes...");
+            debug!("Listing all mailboxes");
             let mailboxes = session.list(Some(""), Some("*"))?;
             let _ = session.logout();
-
-            // Extract mailbox names from the LIST response
-            let mailbox_names: Vec<String> = mailboxes
-                .iter()
-                .map(|name| name.name().to_string())
-                .collect();
-
-            Ok::<Vec<String>, anyhow::Error>(mailbox_names)
+            Ok::<Vec<String>, anyhow::Error>(
+                mailboxes.iter().map(|n| n.name().to_string()).collect(),
+            )
         })
         .await??;
 
-        println!("Found {} mailbox(es):", mailboxes.len());
-        for mailbox_name in &mailboxes {
-            println!("  - {}", mailbox_name);
-        }
+        info!(account = %account.email, mailboxes = mailboxes.len(), "Discovered mailboxes");
+        debug!(account = %account.email, mailboxes = ?mailboxes, "Mailbox names");
 
         // Fetch from all mailboxes
         for mailbox in &mailboxes {
-            println!("\n--- Fetching from mailbox: {} ---", mailbox);
-
             match fetch_all_messages_from_mailbox(account, mailbox, output_dir, db).await {
                 Ok(count) => {
-                    println!(
-                        "✓ Successfully saved {} messages from {}/{}",
-                        count, account.email, mailbox
+                    info!(
+                        account = %account.email,
+                        mailbox = %mailbox,
+                        saved = count,
+                        "Mailbox synced"
                     );
                     total_saved += count;
                     if let Err(e) = db.record_fetch_run_progress(run_id, count as i64).await {
-                        eprintln!("✗ Failed to record fetch progress: {:?}", e);
+                        error!("Failed to record fetch progress: {:?}", e);
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "✗ Failed to fetch from {}/{}: {:?}",
-                        account.email, mailbox, e
+                    error!(
+                        account = %account.email,
+                        mailbox = %mailbox,
+                        "Failed to fetch from mailbox: {:?}",
+                        e
                     );
                 }
             }

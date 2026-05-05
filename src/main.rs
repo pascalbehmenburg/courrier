@@ -7,9 +7,16 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Default to INFO; override with RUST_LOG (e.g. RUST_LOG=courrier=debug).
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .init();
+
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(|s| s.as_str());
 
@@ -20,12 +27,12 @@ async fn main() -> Result<()> {
     // Load configuration
     let app_config = config::load_config()?;
     let accounts = config::extract_accounts(&app_config);
-    println!("Loaded {} account(s) from Config.toml", accounts.len());
+    info!("Loaded {} account(s) from Config.toml", accounts.len());
 
     // Create output directory from config
     let output_dir = PathBuf::from(&app_config.email_storage_path);
     std::fs::create_dir_all(&output_dir)?;
-    println!("Output directory: {}", output_dir.display());
+    info!("Output directory: {}", output_dir.display());
 
     match command {
         Some("fetch") => {
@@ -47,6 +54,8 @@ async fn main() -> Result<()> {
             server::start_server(state, port, app_config.fetch_on_startup).await?;
         }
         Some(cmd) => {
+            // Usage messages go to stderr directly: this runs before the user
+            // can sensibly enable a log filter, and we want a non-zero exit.
             eprintln!("Unknown command: {}", cmd);
             eprintln!("Usage: courrier [fetch|server] [port]");
             eprintln!("  fetch  - Run one-time fetch and exit");
@@ -64,16 +73,12 @@ async fn run_fetch(
     output_dir: &Path,
     db: &database::Database,
 ) -> Result<()> {
-    println!("\n{}", "=".repeat(80));
-    println!("Starting fetch operation");
-    println!("{}", "=".repeat(80));
-
+    info!("Starting fetch operation");
     let total_saved = fetcher::fetch_all_accounts(accounts, output_dir, db).await?;
-
-    println!("\n{}", "=".repeat(80));
-    println!("✓ Done! Total messages saved: {}", total_saved);
-    println!("Messages saved to: {}", output_dir.display());
-    println!("{}", "=".repeat(80));
-
+    info!(
+        "Done. Saved {} total message(s) to {}",
+        total_saved,
+        output_dir.display()
+    );
     Ok(())
 }
