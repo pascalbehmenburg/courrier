@@ -20,8 +20,6 @@ pub struct EmailStats {
 
 #[derive(Debug, Clone)]
 pub struct FetchStatus {
-    #[expect(unused)]
-    pub is_running: bool,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub messages_fetched: i64,
@@ -220,7 +218,7 @@ impl Database {
     pub fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT started_at, completed_at, messages_fetched, status
+            "SELECT started_at, completed_at, messages_fetched
              FROM fetch_history
              ORDER BY started_at DESC
              LIMIT 1",
@@ -230,21 +228,16 @@ impl Database {
             let started_at_str: String = row.get(0)?;
             let completed_at_str: Option<String> = row.get(1)?;
             let messages_fetched: i64 = row.get(2)?;
-            let status: String = row.get(3)?;
 
             let parse = |s: &str| {
                 DateTime::parse_from_rfc3339(s)
                     .ok()
                     .map(|dt| dt.with_timezone(&Utc))
             };
-            let started_at = parse(&started_at_str);
-            let completed_at = completed_at_str.as_deref().and_then(parse);
-            let is_running = completed_at_str.is_none() && status == "running";
 
             Ok(FetchStatus {
-                is_running,
-                started_at,
-                completed_at,
+                started_at: parse(&started_at_str),
+                completed_at: completed_at_str.as_deref().and_then(parse),
                 messages_fetched,
             })
         })?;
