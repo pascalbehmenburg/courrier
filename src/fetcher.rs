@@ -330,6 +330,21 @@ pub async fn fetch_all_accounts(
     output_dir: &Path,
     db: &Database,
 ) -> Result<usize> {
+    let run_id = db.start_fetch_run()?;
+    let result = fetch_all_accounts_inner(accounts, output_dir, db, run_id).await;
+    let final_status = if result.is_ok() { "completed" } else { "failed" };
+    if let Err(e) = db.complete_fetch_run(run_id, final_status) {
+        eprintln!("✗ Failed to mark fetch run {} complete: {:?}", run_id, e);
+    }
+    result
+}
+
+async fn fetch_all_accounts_inner(
+    accounts: &[AccountConfig],
+    output_dir: &Path,
+    db: &Database,
+    run_id: i64,
+) -> Result<usize> {
     let mut total_saved = 0;
 
     for account in accounts {
@@ -371,6 +386,9 @@ pub async fn fetch_all_accounts(
                         count, account.email, mailbox
                     );
                     total_saved += count;
+                    if let Err(e) = db.record_fetch_run_progress(run_id, count as i64) {
+                        eprintln!("✗ Failed to record fetch progress: {:?}", e);
+                    }
                 }
                 Err(e) => {
                     eprintln!(

@@ -179,6 +179,43 @@ impl Database {
         Ok(row)
     }
 
+    /// Record the start of a fetch run and return its row id. Per-account
+    /// columns are not used at the run level (one row covers the whole run);
+    /// the schema requires NOT NULL so we store empty strings.
+    pub fn start_fetch_run(&self) -> Result<i64> {
+        let conn = self.conn.lock();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO fetch_history (account_email, mailbox, started_at, status)
+             VALUES ('', '', ?1, 'running')",
+            params![now],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn record_fetch_run_progress(&self, run_id: i64, additional: i64) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE fetch_history
+             SET messages_fetched = messages_fetched + ?1
+             WHERE id = ?2",
+            params![additional, run_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn complete_fetch_run(&self, run_id: i64, status: &str) -> Result<()> {
+        let conn = self.conn.lock();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE fetch_history
+             SET completed_at = ?1, status = ?2
+             WHERE id = ?3",
+            params![now, status, run_id],
+        )?;
+        Ok(())
+    }
+
     pub fn get_latest_fetch_status(&self) -> Result<Option<FetchStatus>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
