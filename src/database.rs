@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub struct Database {
-    pub conn: Arc<Mutex<Connection>>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 #[derive(Debug, Clone)]
