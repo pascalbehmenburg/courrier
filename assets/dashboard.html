@@ -292,6 +292,11 @@
     </div>
 
     <script>
+        const STATS_POLL_MS = 10000;
+        const STATUS_POLL_MS = 3000;
+        const ACTIVE_FETCH_POLL_MS = 2000;
+        const POST_TRIGGER_REFRESH_MS = 500;
+
         let fetchInterval = null;
         let timerInterval = null;
         let fetchStartTime = null;
@@ -491,7 +496,7 @@
                         fetchInterval = setInterval(() => {
                             loadFetchStatus();
                             loadStats();
-                        }, 2000);
+                        }, ACTIVE_FETCH_POLL_MS);
                     }
                 }
             } catch (error) {
@@ -500,16 +505,15 @@
             }
 
             // Refresh status immediately
-            setTimeout(loadFetchStatus, 500);
+            setTimeout(loadFetchStatus, POST_TRIGGER_REFRESH_MS);
         }
 
         // Initial load
         loadStats();
         loadFetchStatus();
 
-        // Refresh stats every 10 seconds
-        setInterval(loadStats, 10000);
-        setInterval(loadFetchStatus, 3000);
+        setInterval(loadStats, STATS_POLL_MS);
+        setInterval(loadFetchStatus, STATUS_POLL_MS);
 
         // Cleanup interval on page unload
         window.addEventListener('beforeunload', () => {

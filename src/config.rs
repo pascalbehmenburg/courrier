@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 
+const DEFAULT_IMAPS_PORT: u16 = 993;
+const DEFAULT_EMAIL_STORAGE_PATH: &str = "emails";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AccountConfig {
     pub email: String,
@@ -28,11 +31,11 @@ struct ServerConfig {
 }
 
 fn default_port() -> u16 {
-    993
+    DEFAULT_IMAPS_PORT
 }
 
 fn default_email_storage_path() -> String {
-    "emails".to_string()
+    DEFAULT_EMAIL_STORAGE_PATH.to_string()
 }
 
 fn default_fetch_on_startup() -> bool {

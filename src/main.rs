@@ -10,6 +10,9 @@ use tokio::sync::Mutex;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+const DEFAULT_DASHBOARD_PORT: u16 = 3000;
+const DEFAULT_DB_PATH: &str = "courrier.db";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Default to INFO; override with RUST_LOG (e.g. RUST_LOG=courrier=debug).
@@ -20,8 +23,8 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(|s| s.as_str());
 
-    // Initialize database - use environment variable if set, otherwise default to "courrier.db"
-    let db_path = std::env::var("COURRIER_DB_PATH").unwrap_or_else(|_| "courrier.db".to_string());
+    let db_path =
+        std::env::var("COURRIER_DB_PATH").unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());
     let db = database::Database::new(&db_path)?;
 
     // Load configuration
@@ -41,7 +44,10 @@ async fn main() -> Result<()> {
         }
         Some("server") | None => {
             // Server mode: start dashboard
-            let port = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3000);
+            let port = args
+                .get(2)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_DASHBOARD_PORT);
 
             let state = server::AppState {
                 db: Arc::new(db),
@@ -60,7 +66,10 @@ async fn main() -> Result<()> {
             eprintln!("Usage: courrier [fetch|server] [port]");
             eprintln!("  fetch  - Run one-time fetch and exit");
             eprintln!("  server - Start web dashboard (default)");
-            eprintln!("  port   - Port number for server (default: 3000)");
+            eprintln!(
+                "  port   - Port number for server (default: {})",
+                DEFAULT_DASHBOARD_PORT
+            );
             std::process::exit(1);
         }
     }
