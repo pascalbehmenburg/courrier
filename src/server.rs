@@ -67,12 +67,11 @@ async fn dashboard_handler() -> Html<&'static str> {
     Html(include_str!("../assets/dashboard.html"))
 }
 
-async fn accounts_handler(State(state): State<AppState>) -> Json<Vec<ServerInfo>> {
-    // Group accounts by server
+fn group_servers(accounts: &[AccountConfig]) -> Vec<ServerInfo> {
     use std::collections::HashMap;
     let mut servers: HashMap<String, ServerInfo> = HashMap::new();
 
-    for account in state.config.iter() {
+    for account in accounts {
         let server_key = format!("{}:{}", account.server, account.port);
         let server_info = servers.entry(server_key).or_insert_with(|| ServerInfo {
             host: account.server.clone(),
@@ -87,7 +86,7 @@ async fn accounts_handler(State(state): State<AppState>) -> Json<Vec<ServerInfo>
         });
     }
 
-    Json(servers.into_values().collect())
+    servers.into_values().collect()
 }
 
 async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsResponse>, StatusCode> {
@@ -111,27 +110,8 @@ async fn stats_handler(State(state): State<AppState>) -> Result<Json<StatsRespon
         })
         .collect();
 
-    // Group accounts by server
-    use std::collections::HashMap;
-    let mut servers: HashMap<String, ServerInfo> = HashMap::new();
-
-    for account in state.config.iter() {
-        let server_key = format!("{}:{}", account.server, account.port);
-        let server_info = servers.entry(server_key).or_insert_with(|| ServerInfo {
-            host: account.server.clone(),
-            port: account.port,
-            accounts: Vec::new(),
-        });
-
-        server_info.accounts.push(AccountInfo {
-            email: account.email.clone(),
-            server: account.server.clone(),
-            port: account.port,
-        });
-    }
-
     Ok(Json(StatsResponse {
-        accounts: servers.into_values().collect(),
+        accounts: group_servers(&state.config),
         total_emails,
         total_storage_bytes,
         per_account_stats,
@@ -277,7 +257,6 @@ async fn require_xhr_header(req: Request, next: Next) -> Result<Response, Status
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(dashboard_handler))
-        .route("/api/accounts", get(accounts_handler))
         .route("/api/stats", get(stats_handler))
         .route("/api/fetch", post(fetch_handler))
         .route("/api/fetch/status", get(fetch_status_handler))
