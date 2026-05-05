@@ -253,76 +253,78 @@ pub async fn fetch_all_messages_from_mailbox(
     Ok(saved_count)
 }
 
+/// Open a fresh TLS connection and authenticate. Pulled out so the Gmail
+/// fallback path doesn't have to duplicate the connect/login dance.
+fn try_login(
+    server: &str,
+    port: u16,
+    username: &str,
+    password: &str,
+) -> Result<Session<TlsStream<TcpStream>>> {
+    let tls = TlsConnector::builder().build()?;
+    let client = connect_with_timeout(server, port, &tls)?;
+    client
+        .login(username, password)
+        .map_err(|(e, _)| anyhow::anyhow!("login failed for {}: {:?}", username, e))
+}
+
+fn print_gmail_troubleshooting() {
+    eprintln!("\nGmail troubleshooting:");
+    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
+    eprintln!("2. Use an App-Specific Password (not your regular password)");
+    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
+    eprintln!("3. If 2FA is disabled, enable it first (required for app passwords)");
+    eprintln!("4. App passwords are 16 characters (may include spaces)");
+}
+
 // Synchronous version for use in blocking tasks
 fn connect_and_login_sync(config: &AccountConfig) -> Result<Session<TlsStream<TcpStream>>> {
-    let tls = TlsConnector::builder().build()?;
-    println!("Connecting to {}:{}", config.server, config.port);
-
-    let client = connect_with_timeout(&config.server, config.port, &tls)?;
-    println!("Connected to {}", config.server);
     println!(
-        "Logging in as {} (username: {})",
-        config.email, config.username
+        "Connecting to {}:{} as {} (username: {})",
+        config.server, config.port, config.email, config.username
     );
 
-    match client.login(&config.username, &config.password) {
+    let first_err = match try_login(
+        &config.server,
+        config.port,
+        &config.username,
+        &config.password,
+    ) {
         Ok(session) => {
             println!("✓ Successfully logged in!");
-            Ok(session)
+            return Ok(session);
         }
-        Err(e) => {
-            // For Gmail, if login fails and username contains @, try without the domain
-            if config.server == "imap.gmail.com" && config.username.contains('@') {
-                let username_local = config.username.split('@').next().unwrap();
-                println!(
-                    "First attempt failed, reconnecting and trying with local username: {}",
-                    username_local
+        Err(e) => e,
+    };
+
+    // For Gmail, if the configured username contains @, retry with the local
+    // part — some account types only accept that form.
+    if config.server == "imap.gmail.com" && config.username.contains('@') {
+        let username_local = config.username.split('@').next().unwrap();
+        println!("Retrying with local username: {}", username_local);
+        match try_login(&config.server, config.port, username_local, &config.password) {
+            Ok(session) => {
+                println!("✓ Successfully logged in with local username!");
+                return Ok(session);
+            }
+            Err(e2) => {
+                eprintln!(
+                    "❌ Login failed for {} with both '{}' and '{}'",
+                    config.email, config.username, username_local
                 );
-
-                // Reconnect for retry
-                let tls_retry = TlsConnector::builder().build()?;
-                let retry_client = connect_with_timeout(&config.server, config.port, &tls_retry)?;
-
-                match retry_client.login(username_local, &config.password) {
-                    Ok(session) => {
-                        println!("✓ Successfully logged in with local username!");
-                        Ok(session)
-                    }
-                    Err(e2) => {
-                        eprintln!(
-                            "❌ Login failed for {} with both username formats",
-                            config.email
-                        );
-                        eprintln!("   Error with '{}': {:?}", config.username, e);
-                        eprintln!("   Error with '{}': {:?}", username_local, e2);
-                        eprintln!("\nGmail troubleshooting:");
-                        eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                        eprintln!("2. Use an App-Specific Password (not your regular password)");
-                        eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                        eprintln!(
-                            "3. If 2FA is disabled, enable it first (required for app passwords)"
-                        );
-                        eprintln!("4. App passwords are 16 characters (may include spaces)");
-                        Err(anyhow::anyhow!("Login failed: {:?}", e2.0))
-                    }
-                }
-            } else {
-                // For non-Gmail, just report the error
-                eprintln!("❌ Login failed for {}: {:?}", config.email, e);
-                if config.server == "imap.gmail.com" {
-                    eprintln!("\nGmail troubleshooting:");
-                    eprintln!("1. Ensure IMAP is enabled in Gmail settings");
-                    eprintln!("2. Use an App-Specific Password (not your regular password)");
-                    eprintln!("   Generate one at: https://myaccount.google.com/apppasswords");
-                    eprintln!(
-                        "3. If 2FA is disabled, enable it first (required for app passwords)"
-                    );
-                    eprintln!("4. App passwords are 16 characters (may include spaces)");
-                }
-                Err(anyhow::anyhow!("Login failed: {:?}", e.0))
+                eprintln!("   Original error: {:?}", first_err);
+                eprintln!("   Retry error:    {:?}", e2);
+                print_gmail_troubleshooting();
+                return Err(e2);
             }
         }
     }
+
+    eprintln!("❌ Login failed for {}: {:?}", config.email, first_err);
+    if config.server == "imap.gmail.com" {
+        print_gmail_troubleshooting();
+    }
+    Err(first_err)
 }
 
 pub async fn fetch_all_accounts(
