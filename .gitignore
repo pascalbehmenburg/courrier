@@ -1,4 +1,12 @@
 /target
-Config.toml
-/emails
 courrier.db
+courrier.db-*
+/emails
+*.log
+
+# Tauri / frontend build artifacts
+desktop/dist/*
+!desktop/dist/.gitkeep
+desktop/node_modules
+desktop/src-tauri/target
+desktop/src-tauri/gen

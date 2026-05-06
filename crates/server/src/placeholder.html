@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Courrier — frontend not built</title>
+    <style>
+      body {
+        font-family: -apple-system, system-ui, sans-serif;
+        max-width: 640px;
+        margin: 60px auto;
+        padding: 0 20px;
+        color: #1a1a1a;
+        line-height: 1.6;
+      }
+      code {
+        background: #f4f4f5;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      h1 { margin-bottom: 8px; }
+      .api { background: #fafafa; padding: 16px 20px; border-radius: 8px; border: 1px solid #e4e4e7; }
+    </style>
+  </head>
+  <body>
+    <h1>📧 Courrier</h1>
+    <p>The API is running, but the frontend bundle hasn't been built.</p>
+    <p>From the project root:</p>
+    <pre><code>cd desktop
+pnpm install
+pnpm build</code></pre>
+    <p>Then restart the server.</p>
+    <div class="api">
+      <strong>API endpoints available now:</strong>
+      <ul>
+        <li><code>GET /api/health</code></li>
+        <li><code>GET /api/providers</code></li>
+        <li><code>GET /api/accounts</code></li>
+        <li><code>POST /api/accounts</code></li>
+        <li><code>GET /api/sync/status</code></li>
+        <li><code>POST /api/sync</code></li>
+        <li><code>GET /api/messages</code></li>
+        <li><code>GET /api/search?q=...</code></li>
+        <li><code>GET /api/analytics/overview</code></li>
+      </ul>
+    </div>
+  </body>
+</html>
