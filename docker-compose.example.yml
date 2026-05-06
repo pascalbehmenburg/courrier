@@ -5,8 +5,19 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./config:/config
+      # Mount a host directory for the SQLite DB + saved .eml files.
+      # On first run, chown to UID 10001 so the in-container user can write:
+      #   sudo chown -R 10001:10001 ./data
       - ./data:/data
     restart: unless-stopped
     environment:
-      - COURRIER_DB_PATH=/data/courrier.db
+      # Required: 32 random bytes, base64-encoded. Generate once:
+      #   head -c 32 /dev/urandom | base64
+      # Losing it means losing access to stored IMAP passwords.
+      COURRIER_ENCRYPTION_KEY: "REPLACE_ME_WITH_BASE64_OF_32_RANDOM_BYTES"
+      # Optional overrides:
+      # COURRIER_DB_PATH: /data/courrier.db
+      # COURRIER_STORAGE_PATH: /data/emails
+      # COURRIER_BIND_ADDR: 0.0.0.0:3000
+      # COURRIER_FETCH_ON_STARTUP: "true"
+      # RUST_LOG: "info,courrier_core=debug"

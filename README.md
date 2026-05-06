@@ -1,274 +1,158 @@
 # Courrier
 
-An asynchronous email fetching service built with Rust. Courrier connects to IMAP servers, downloads emails to `.eml` files, and provides a web dashboard for monitoring and managing your emails. It may be used for automated mail backups on a server.
+A self-hosted email backup, search, and analysis service. Connects to any number
+of IMAP accounts, downloads each message as a `.eml` file, parses the headers
+and body into a SQLite database, and exposes everything through a modern web
+dashboard. Ships as a single Docker image for the server, plus an optional
+Tauri desktop app that talks to the same backend.
 
 ## Features
 
-- **Multi-Account Support**: Fetch emails from multiple IMAP accounts across different servers
-- **Automatic Mailbox Discovery**: Automatically discovers and fetches from all mailboxes
-- **Incremental Fetching**: Tracks fetched emails to avoid duplicates
-- **Web Dashboard**: Provides a dashboard for monitoring fetch status and statistics
-- **Periodic Fetching**: Optional automatic fetching at configurable intervals
-- **Docker Support**: Ready-to-use Docker container with volume mounts
-- **SQLite Database**: Lightweight database for tracking fetched emails
-- **Async Architecture**: Built with Tokio for high-performance concurrent operations
+- **Dashboard-managed accounts** — add/edit/remove IMAP connections from the UI;
+  no config files, no redeploys. Provider presets for iCloud, Gmail / Workspace,
+  Outlook / Microsoft 365, Yahoo, Fastmail, web.de, GMX, and a custom option.
+- **Encrypted credentials at rest** — passwords are AES-GCM-256 encrypted
+  before they touch the database. The key lives in an env var.
+- **Per-account sync** — sync now / sync all buttons, configurable auto-sync
+  interval per account, in-flight progress + last-error visible per account.
+- **Full-text search** — SQLite FTS5 index over subject, from, to, body. The
+  search box accepts FTS5 syntax (`"phrase"`, `term1 AND term2`,
+  `column:value`).
+- **Forwarding analysis** — detects forwarded mail (Resent-* / X-Forwarded-*
+  headers, body sentinels for Gmail / Apple / Outlook / German Outlook) and
+  surfaces the original sender's domain. Answers questions like *"how many
+  mails were forwarded from `ambien@web.de`, and which domains did they
+  originate from?"*
+- **Analytics** — top senders, sender-domain breakdown, mailbox distribution,
+  daily traffic timeline, all scopable to one account or to everything.
+- **Two clients, one backend** — the same React + shadcn UI is served as a
+  web app by the axum binary *and* packaged as a native desktop app by Tauri 2
+  (the desktop app can point at a remote Docker deployment).
 
-## Installation
+## Architecture
 
-### Using Cargo
-
-```bash
-cargo install --path .
+```
+crates/
+  core/     # all durable logic: encryption, DB, IMAP fetcher,
+            # mail parser, FTS5 search, analytics, sync coordinator
+  server/   # axum HTTP API; embeds the React SPA via rust-embed
+desktop/    # Vite + React + Tailwind + shadcn-style UI
+  src-tauri/  # Tauri 2 native shell loading the same SPA
 ```
 
-Or clone and build:
+The server is the single source of truth — both the embedded web UI and the
+Tauri desktop app are thin REST clients of the same `/api/*` endpoints.
+
+## Quick start (Docker)
 
 ```bash
-git clone <repository-url>
-cd mailster
-cargo build --release
-```
+# Generate the encryption key once and stash it somewhere safe.
+KEY=$(head -c 32 /dev/urandom | base64)
 
-### Using Docker
+mkdir -p data && sudo chown -R 10001:10001 data
 
-You can either build the image locally or use the pre-built image from GitHub Container Registry.
-
-**Option 1: Use Pre-built Image (Recommended)**
-
-```bash
-# Pull the latest image from GitHub Container Registry
-docker pull ghcr.io/pascalbehmenburg/courrier:latest
-```
-
-**Option 2: Build Locally**
-
-```bash
-docker build -t courrier .
-```
-
-## Configuration
-
-Create a `Config.toml` file in the working directory (or mount it at `/config/Config.toml` in Docker):
-
-```toml
-# Storage configuration
-email_storage_path = "emails"  # Path where emails will be stored
-
-# Fetch configuration
-fetch_on_startup = true        # Automatically fetch emails when server starts
-fetch_interval_seconds = 3600  # Optional: Automatically fetch every N seconds (e.g., 3600 = 1 hour)
-
-# Example apple IMAP server configuration
-[[servers]]
-host = "imap.mail.me.com"
-port = 993  # Optional, defaults to 993 if not specified
-accounts = [
-  { email = "your@mail.com", username = "mailer", password = "your-app-specific-password" },
-  { email = "other@mail.com", username = "mailer", password = "your-app-specific-password" }
-]
-
-# Example gmail IMAP server configuration
-[[servers]]
-host = "imap.gmail.com"
-port = 993
-accounts = [
-  { email = "your-email@gmail.com", username = "your-email@gmail.com", password = "your-app-specific-password" }
-]
-```
-
-See `Config.toml.example` for a complete example.
-
-## Usage
-
-### CLI Mode
-
-Run a one-time fetch operation:
-
-```bash
-courrier fetch
-```
-
-### Server Mode
-
-Start the web dashboard (default):
-
-```bash
-courrier server
-# or
-courrier server 8080  # Custom port
-```
-
-The dashboard will be available at `http://localhost:3000` (or your specified port).
-
-### Environment Variables
-
-- `COURRIER_DB_PATH`: Path to the SQLite database file (default: `courrier.db`)
-
-## Docker Usage
-
-### Using Pre-built Image
-
-The easiest way to use Courrier is with the pre-built Docker image from GitHub Container Registry:
-
-```bash
-# Pull the latest image
-docker pull ghcr.io/pascalbehmenburg/courrier:latest
-
-# Run the container
-docker run -d \
-  --name courrier \
+docker run -d --name courrier \
   -p 3000:3000 \
-  -v /path/to/your/config:/config \
-  -v /path/to/your/data:/data \
+  -v "$(pwd)/data:/data" \
+  -e COURRIER_ENCRYPTION_KEY="$KEY" \
   ghcr.io/pascalbehmenburg/courrier:latest
 ```
 
-**Note:** If the repository is private, you'll need to authenticate first:
+Then open http://localhost:3000 and add an account from the dashboard.
+
+The image bundles both the API and the web UI. To run the same setup with
+docker compose, copy `docker-compose.example.yml` to `docker-compose.yml`
+and replace the `COURRIER_ENCRYPTION_KEY` placeholder.
+
+## Configuration
+
+All process-wide settings come from environment variables. Per-account
+settings (host, port, sync interval, …) live in the database and are managed
+from the UI.
+
+| Variable                    | Default              | Notes                                 |
+| --------------------------- | -------------------- | ------------------------------------- |
+| `COURRIER_ENCRYPTION_KEY`   | _(required)_         | Base64 of 32 random bytes (AES-GCM)   |
+| `COURRIER_DB_PATH`          | `courrier.db`        | SQLite file                           |
+| `COURRIER_STORAGE_PATH`     | `emails`             | Directory for `.eml` files            |
+| `COURRIER_BIND_ADDR`        | `127.0.0.1:3000`     | Server bind (Docker overrides to all) |
+| `COURRIER_FETCH_ON_STARTUP` | `true`               | Trigger sync-all on boot              |
+| `RUST_LOG`                  | `info`               | Standard `tracing` env-filter syntax  |
+
+### Generating the encryption key
 
 ```bash
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+head -c 32 /dev/urandom | base64
 ```
 
-### Building the Image Locally
+**Losing this key means losing access to every stored IMAP password.** Back it
+up next to the database, or hand it to your secret manager.
 
-Alternatively, you can build the image from source:
+## Local development
+
+You'll need Rust, Node 22, and pnpm. The desktop app expects Tauri 2 system
+deps if you want to run it natively (see <https://v2.tauri.app/start/prerequisites/>).
 
 ```bash
-docker build -t courrier .
+# Backend (terminal 1)
+export COURRIER_ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
+cargo run -p courrier-server
+
+# Frontend with HMR (terminal 2)
+cd desktop
+pnpm install
+pnpm dev
+# → http://localhost:5173, /api proxied to 127.0.0.1:3000
 ```
 
-### Running the Container
+For the Tauri desktop app:
 
 ```bash
-docker run -d \
-  --name courrier \
-  -p 3000:3000 \
-  -v /path/to/your/config:/config \
-  -v /path/to/your/data:/data \
-  courrier
+cd desktop
+pnpm tauri dev      # native window, hot-reloaded
+pnpm tauri build    # native installers in src-tauri/target/release/bundle
 ```
 
-**Volume Mounts:**
-- `/config`: Mount your `Config.toml` file here
-- `/data`: Emails and database (`courrier.db`) will be stored here
+When the desktop app talks to a *remote* backend, point it at the URL on the
+Settings page; that value persists per device.
 
-**Example:**
+## API surface
 
-```bash
-# Create directories
-mkdir -p ~/courrier/config ~/courrier/data
+Sketch — see `crates/server/src/routes/` for the full set.
 
-# Copy your Config.toml
-cp Config.toml ~/courrier/config/
+```
+GET    /api/health
+GET    /api/providers
 
-# Run container
-docker run -d \
-  --name courrier \
-  -p 3000:3000 \
-  -v ~/courrier/config:/config \
-  -v ~/courrier/data:/data \
-  courrier
+GET    /api/accounts
+POST   /api/accounts
+GET    /api/accounts/:id
+PUT    /api/accounts/:id
+DELETE /api/accounts/:id
+POST   /api/accounts/:id/test          # smoke-test the IMAP login
+
+POST   /api/sync                       # all enabled accounts
+POST   /api/sync/:account_id           # one account
+GET    /api/sync/status                # per-account in-flight + latest run
+
+GET    /api/messages?account_id=&mailbox=&limit=&offset=
+GET    /api/messages/:id
+GET    /api/messages/:id/raw           # raw .eml bytes
+
+GET    /api/search?q=&account_id=&limit=
+
+GET    /api/analytics/overview?account_id=
+GET    /api/analytics/top-senders
+GET    /api/analytics/top-sender-domains
+GET    /api/analytics/forwarding
+GET    /api/analytics/timeline?days=
+GET    /api/analytics/mailboxes
 ```
 
-**Important:** Make sure your `Config.toml` has `email_storage_path = "/data"` (or a subdirectory like `/data/emails`) when running in Docker.
-
-### Docker Compose
-
-The easiest way to run Courrier is using Docker Compose with the pre-built image. See `docker-compose.example.yml` for a complete example.
-
-**Using Pre-built Image (Recommended):**
-
-Create a `docker-compose.yml` based on `docker-compose.example.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  courrier:
-    image: ghcr.io/pascalbehmenburg/courrier:latest
-    container_name: courrier
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./config:/config
-      - ./data:/data
-    restart: unless-stopped
-    environment:
-      - COURRIER_DB_PATH=/data/courrier.db
-```
-
-**Building Locally:**
-
-If you prefer to build the image locally, use:
-
-```yaml
-version: '3.8'
-
-services:
-  courrier:
-    build: .
-    container_name: courrier
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./config:/config
-      - ./data:/data
-    restart: unless-stopped
-    environment:
-      - COURRIER_DB_PATH=/data/courrier.db
-```
-
-See `docker-compose.example.yml` for a full example.
-
-Run with:
-
-```bash
-docker-compose up -d
-```
-
-## Development
-
-### Prerequisites
-
-- Rust (latest stable)
-- Nix (optional, for development environment)
-
-### Setup with Nix
-
-The project includes a Nix flake for a reproducible development environment:
-
-```bash
-nix develop
-```
-
-## API Endpoints
-
-The web dashboard provides the following REST API endpoints:
-
-- `GET /` - Web dashboard (HTML)
-- `GET /api/accounts` - List all configured accounts
-- `GET /api/stats` - Get statistics (total emails, storage, per-account stats)
-- `POST /api/fetch` - Trigger a manual fetch operation
-- `GET /api/fetch/status` - Get current fetch operation status
-
-## How It Works
-
-1. **Configuration Loading**: Reads `Config.toml` to get IMAP server and account details
-2. **Database Initialization**: Creates/opens SQLite database to track fetched emails
-3. **Mailbox Discovery**: Connects to each account and lists all available mailboxes
-4. **Incremental Fetching**: For each mailbox, fetches only new emails (not in database)
-5. **Email Storage**: Saves emails as `.eml` files organized by account and mailbox
-6. **Web Dashboard**: Provides real-time monitoring and manual fetch triggers
+State-changing requests must include the `X-Requested-With` header (the SPA
+sets it automatically). CORS is permissive so the Tauri app can talk to a
+remote deployment.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
-Copyright (c) 2025 Pascal Behmenburg
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-For issues, questions, or contributions, please open an issue on the repository.
-
+MIT — see `LICENSE`.
