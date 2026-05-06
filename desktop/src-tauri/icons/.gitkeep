@@ -1,0 +1,2 @@
+# Place app icons here before running `pnpm tauri build`.
+# Tauri ships an icon helper: `pnpm tauri icon path/to/source.png`
