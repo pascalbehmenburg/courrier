@@ -255,9 +255,7 @@ impl Database {
 
     pub async fn get_message(&self, id: i64) -> Result<Option<Message>> {
         self.run(move |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT * FROM messages WHERE id = ?1",
-            )?;
+            let mut stmt = conn.prepare("SELECT * FROM messages WHERE id = ?1")?;
             Ok(stmt.query_row(params![id], row_to_message).optional()?)
         })
         .await

@@ -51,8 +51,7 @@ impl Encryptor {
             .cipher
             .decrypt(nonce, ct)
             .map_err(|_| anyhow::anyhow!("decryption failed (key mismatch or tampered data)"))?;
-        Ok(String::from_utf8(plaintext)
-            .context("decrypted bytes are not valid UTF-8")?)
+        String::from_utf8(plaintext).context("decrypted bytes are not valid UTF-8")
     }
 }
 

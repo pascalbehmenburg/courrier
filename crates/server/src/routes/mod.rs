@@ -27,7 +27,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/accounts", get(accounts::list).post(accounts::create))
         .route(
             "/api/accounts/:id",
-            get(accounts::get).put(accounts::update).delete(accounts::delete_one),
+            get(accounts::get)
+                .put(accounts::update)
+                .delete(accounts::delete_one),
         )
         .route("/api/accounts/:id/test", post(accounts::test))
         .route("/api/sync", post(sync::trigger_all))
@@ -43,10 +45,7 @@ pub fn router(state: AppState) -> Router {
             "/api/analytics/top-sender-domains",
             get(analytics::top_sender_domains),
         )
-        .route(
-            "/api/analytics/forwarding",
-            get(analytics::forwarding),
-        )
+        .route("/api/analytics/forwarding", get(analytics::forwarding))
         .route("/api/analytics/timeline", get(analytics::timeline))
         .route("/api/analytics/mailboxes", get(analytics::mailboxes))
         .layer(middleware::from_fn(require_xhr_for_writes));
@@ -82,4 +81,3 @@ pub(crate) fn server_error<E: std::fmt::Debug>(err: E) -> StatusCode {
     tracing::error!("internal error: {:?}", err);
     StatusCode::INTERNAL_SERVER_ERROR
 }
-

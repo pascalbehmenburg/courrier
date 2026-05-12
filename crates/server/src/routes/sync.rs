@@ -20,7 +20,11 @@ pub struct PerAccountStatus {
 pub async fn trigger_all(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let started = state.coordinator.trigger_all().await.map_err(server_error)?;
+    let started = state
+        .coordinator
+        .trigger_all()
+        .await
+        .map_err(server_error)?;
     Ok(Json(json!({"started": started})))
 }
 
@@ -54,8 +58,10 @@ pub async fn status(
         .latest_run_per_account()
         .await
         .map_err(server_error)?;
-    let by_account: std::collections::HashMap<i64, FetchRun> =
-        latest_runs.into_iter().filter_map(|r| r.account_id.map(|id| (id, r))).collect();
+    let by_account: std::collections::HashMap<i64, FetchRun> = latest_runs
+        .into_iter()
+        .filter_map(|r| r.account_id.map(|id| (id, r)))
+        .collect();
 
     let out: Vec<PerAccountStatus> = accounts
         .into_iter()

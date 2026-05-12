@@ -136,10 +136,7 @@ pub async fn delete_one(
 
 /// Smoke-test a connection without persisting changes. Tries to log in;
 /// returns ok/error so the UI can confirm credentials before save.
-pub async fn test(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Json<TestResult> {
+pub async fn test(State(state): State<AppState>, Path(id): Path<i64>) -> Json<TestResult> {
     let Ok(Some(account)) = state.db.get_account(id).await else {
         return Json(TestResult {
             ok: false,

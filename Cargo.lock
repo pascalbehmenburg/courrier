@@ -572,6 +572,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "courrier-migrate"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "courrier-core",
+ "serde",
+ "tokio",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "courrier-server"
 version = "0.2.0"
 dependencies = [

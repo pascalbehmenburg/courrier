@@ -56,9 +56,10 @@ impl SyncCoordinator {
 
         let db = self.db.clone();
         let storage = (*self.storage_path).clone();
-        let handle = tokio::spawn(async move {
-            fetcher::fetch_account(&account, &secrets, &storage, &db).await
-        });
+        let handle =
+            tokio::spawn(
+                async move { fetcher::fetch_account(&account, &secrets, &storage, &db).await },
+            );
 
         self.in_flight.lock().insert(account_id, handle);
         Ok(true)
@@ -132,9 +133,7 @@ impl SyncCoordinator {
             let due = match last.as_ref() {
                 None => true,
                 Some(run) => match run.completed_at {
-                    Some(completed) => {
-                        (now - completed).num_seconds() as u64 >= interval
-                    }
+                    Some(completed) => (now - completed).num_seconds() as u64 >= interval,
                     None => false, // still running
                 },
             };

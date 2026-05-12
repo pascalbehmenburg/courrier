@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/server", "desktop/src-tauri"]
+members = ["crates/core", "crates/migrate", "crates/server", "desktop/src-tauri"]
 default-members = ["crates/core", "crates/server"]
 
 [workspace.package]
@@ -28,6 +28,7 @@ rand = "0.8"
 sha2 = "0.10"
 axum = "0.7"
 tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
+toml = "0.8"
 
 [profile.release]
 lto = "thin"

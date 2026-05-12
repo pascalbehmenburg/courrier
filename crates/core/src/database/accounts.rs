@@ -72,9 +72,7 @@ impl Database {
                         provider_id, sync_interval_seconds, enabled, created_at, updated_at
                  FROM accounts ORDER BY label",
             )?;
-            let accounts: Result<Vec<Account>, _> = stmt
-                .query_map([], row_to_account)?
-                .collect();
+            let accounts: Result<Vec<Account>, _> = stmt.query_map([], row_to_account)?.collect();
             Ok(accounts?)
         })
         .await

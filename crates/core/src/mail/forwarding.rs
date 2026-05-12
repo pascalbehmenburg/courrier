@@ -76,10 +76,7 @@ pub fn analyze(parsed: &ParsedMail) -> ForwardingInfo {
                 info.original_sender_domain = domain_of(&addr);
                 if info.forwarded_from.is_none() {
                     info.forwarded_from = parsed.from.as_ref().map(|a| a.email.clone());
-                    info.forwarded_from_domain = info
-                        .forwarded_from
-                        .as_deref()
-                        .and_then(domain_of);
+                    info.forwarded_from_domain = info.forwarded_from.as_deref().and_then(domain_of);
                 }
             }
         }
@@ -107,7 +104,7 @@ fn build_sentinel_re() -> Vec<&'static str> {
         "-------- Original Message --------",
         "-------- Forwarded Message --------",
         "-----Original Message-----",
-        "Von: ",          // German Outlook
+        "Von: ",                     // German Outlook
         "Weitergeleitete Nachricht", // German Thunderbird
     ]
 }
@@ -123,7 +120,9 @@ fn pluck_email(value: &str) -> Option<String> {
         }
     }
     for token in value.split(|c: char| c.is_whitespace() || c == ',' || c == ';') {
-        let token = token.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '-' && c != '_' && c != '+');
+        let token = token.trim_matches(|c: char| {
+            !c.is_alphanumeric() && c != '@' && c != '.' && c != '-' && c != '_' && c != '+'
+        });
         if token.contains('@') && token.len() > 3 {
             return Some(token.to_string());
         }
@@ -138,7 +137,7 @@ fn domain_of(addr: &str) -> Option<String> {
 
 fn inner_from_address(body: &str) -> Option<String> {
     for line in body.lines().take(200) {
-        let trimmed = line.trim_start_matches(|c: char| c == '>' || c == ' ' || c == '\t');
+        let trimmed = line.trim_start_matches(['>', ' ', '\t']);
         let lower = trimmed.to_ascii_lowercase();
         if lower.starts_with("from:") || lower.starts_with("von:") {
             if let Some(addr) = pluck_email(trimmed) {

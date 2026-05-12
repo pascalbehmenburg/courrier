@@ -46,11 +46,11 @@ pub async fn fetch_account(
     let run_id = db.start_fetch_run(Some(account.id)).await?;
     let result = fetch_account_inner(account, secrets, storage_path, db, run_id).await;
     let (status, error) = match &result {
-        Ok(_) => (
-            crate::database::FetchRunStatus::Completed,
-            None,
+        Ok(_) => (crate::database::FetchRunStatus::Completed, None),
+        Err(e) => (
+            crate::database::FetchRunStatus::Failed,
+            Some(format!("{e:?}")),
         ),
-        Err(e) => (crate::database::FetchRunStatus::Failed, Some(format!("{e:?}"))),
     };
     if let Err(e) = db.complete_fetch_run(run_id, status, error).await {
         error!("Failed to mark fetch run {} complete: {:?}", run_id, e);
@@ -81,9 +81,7 @@ async fn fetch_account_inner(
                 }
             }
             Err(e) => {
-                outcome
-                    .errors
-                    .push(format!("{}: {e}", mailbox));
+                outcome.errors.push(format!("{}: {e}", mailbox));
                 error!(account = %account.email, mailbox = %mailbox, "Mailbox fetch failed: {:?}", e);
             }
         }
@@ -99,9 +97,7 @@ async fn list_mailboxes(account: &Account, secrets: &AccountSecrets) -> Result<V
         let mut session = connect_and_login(&account, &secrets)?;
         let mailboxes = session.list(Some(""), Some("*"))?;
         let _ = session.logout();
-        Ok::<Vec<String>, anyhow::Error>(
-            mailboxes.iter().map(|n| n.name().to_string()).collect(),
-        )
+        Ok::<Vec<String>, anyhow::Error>(mailboxes.iter().map(|n| n.name().to_string()).collect())
     })
     .await?
 }
@@ -206,10 +202,7 @@ async fn fetch_mailbox(
     Ok(count)
 }
 
-fn fetch_message_body(
-    session: &mut Session<TlsStream<TcpStream>>,
-    uid: u32,
-) -> Result<Vec<u8>> {
+fn fetch_message_body(session: &mut Session<TlsStream<TcpStream>>, uid: u32) -> Result<Vec<u8>> {
     fn try_fetch(
         session: &mut Session<TlsStream<TcpStream>>,
         uid: u32,
@@ -222,9 +215,8 @@ fn fetch_message_body(
     if let Some(body) = try_fetch(session, uid, "BODY.PEEK[]") {
         return Ok(body);
     }
-    try_fetch(session, uid, "RFC822").ok_or_else(|| {
-        anyhow::anyhow!("UID {} returned no body for BODY.PEEK[] or RFC822", uid)
-    })
+    try_fetch(session, uid, "RFC822")
+        .ok_or_else(|| anyhow::anyhow!("UID {} returned no body for BODY.PEEK[] or RFC822", uid))
 }
 
 fn connect_with_timeout(
@@ -270,7 +262,12 @@ fn connect_and_login(
         email = %account.email,
         "Connecting to IMAP server"
     );
-    let first_err = match try_login(&account.host, account.port, &secrets.username, &secrets.password) {
+    let first_err = match try_login(
+        &account.host,
+        account.port,
+        &secrets.username,
+        &secrets.password,
+    ) {
         Ok(session) => {
             info!(email = %account.email, "Login succeeded");
             return Ok(session);

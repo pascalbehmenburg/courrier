@@ -13,9 +13,7 @@ use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use courrier_core::{
-    sync::SyncCoordinator, Database, Encryptor, Settings,
-};
+use courrier_core::{sync::SyncCoordinator, Database, Encryptor, Settings};
 
 #[tokio::main]
 async fn main() -> Result<()> {

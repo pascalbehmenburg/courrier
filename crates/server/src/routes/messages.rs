@@ -31,7 +31,12 @@ pub async fn list(
 ) -> Result<Json<Vec<MessageSummary>>, StatusCode> {
     state
         .db
-        .list_messages(q.account_id, q.mailbox, q.limit.clamp(1, 500), q.offset.max(0))
+        .list_messages(
+            q.account_id,
+            q.mailbox,
+            q.limit.clamp(1, 500),
+            q.offset.max(0),
+        )
         .await
         .map(Json)
         .map_err(server_error)

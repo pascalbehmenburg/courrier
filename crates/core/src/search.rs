@@ -62,9 +62,7 @@ impl Database {
             };
 
             let hits: Result<Vec<_>, _> = match account_id {
-                Some(a) => stmt
-                    .query_map(params![query, a, limit], map_row)?
-                    .collect(),
+                Some(a) => stmt.query_map(params![query, a, limit], map_row)?.collect(),
                 None => stmt.query_map(params![query, limit], map_row)?.collect(),
             };
             Ok(hits?)

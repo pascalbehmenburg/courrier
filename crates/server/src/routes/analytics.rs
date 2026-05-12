@@ -3,9 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use courrier_core::analytics::{
-    CountedString, DateBucket, ForwardingBreakdown, OverviewStats,
-};
+use courrier_core::analytics::{CountedString, DateBucket, ForwardingBreakdown, OverviewStats};
 use serde::Deserialize;
 
 use crate::app_state::AppState;
