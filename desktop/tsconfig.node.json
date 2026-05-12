@@ -6,7 +6,7 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
     "composite": true
   },
   "include": ["vite.config.ts"]

@@ -10,3 +10,7 @@ desktop/dist/*
 desktop/node_modules
 desktop/src-tauri/target
 desktop/src-tauri/gen
+
+# TypeScript incremental + declaration artifacts (from `composite: true`)
+*.tsbuildinfo
+desktop/vite.config.d.ts
