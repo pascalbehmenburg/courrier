@@ -48,7 +48,7 @@ COPY desktop/src-tauri ./desktop/src-tauri
 # Pull in the freshly built React bundle so rust-embed has files to embed.
 COPY --from=node-builder /app/desktop/dist ./desktop/dist
 
-RUN cargo build --release -p courrier-server
+RUN cargo build --release -p courrier-server -p courrier-migrate
 
 ###############################################################################
 # Stage 3 — runtime
@@ -68,6 +68,7 @@ RUN groupadd --system --gid 10001 courrier && \
     mkdir -p /data && chown -R courrier:courrier /data
 
 COPY --from=rust-builder /build/target/release/courrier /usr/local/bin/courrier
+COPY --from=rust-builder /build/target/release/courrier-migrate /usr/local/bin/courrier-migrate
 
 USER courrier
 WORKDIR /data
