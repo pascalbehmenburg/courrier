@@ -21,7 +21,7 @@
 use anyhow::{Context, Result};
 use base64::Engine;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use courrier_core::database::AccountInput;
@@ -140,6 +140,68 @@ fn load_key() -> Result<[u8; 32]> {
     Ok(key)
 }
 
+/// One .eml on disk, with the mailbox name reconstructed from its
+/// directory path relative to the account root.
+struct EmlEntry {
+    mailbox: String,
+    uid: u32,
+    path: PathBuf,
+    size: usize,
+}
+
+/// Walk every subdirectory under `account_dir`, collecting one entry per
+/// `<uid>.eml` file. Mailbox name = relative path from `account_dir` to the
+/// containing directory, joined by `/`. This handles both the flat layout
+/// the post-split fetcher writes (`<account>/<sanitize(mailbox)>/<uid>.eml`)
+/// and the older nested layout where the IMAP hierarchy was mirrored on
+/// disk verbatim (`<account>/[Gmail]/All Mail/<uid>.eml`). For the nested
+/// case the resulting mailbox name matches the IMAP-LIST name exactly, so
+/// the new fetcher's UID-skip lookup hits on first sync.
+fn collect_emls(account_dir: &Path) -> Result<Vec<EmlEntry>> {
+    let mut out = Vec::new();
+    let mut stack = vec![account_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in
+            std::fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))?
+        {
+            let entry = entry?;
+            let ft = entry.file_type()?;
+            let path = entry.path();
+            if ft.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !ft.is_file() || path.extension().and_then(|s| s.to_str()) != Some("eml") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(uid) = stem.parse::<u32>() else {
+                continue;
+            };
+            let rel = dir.strip_prefix(account_dir).unwrap_or(&dir);
+            let mailbox = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            if mailbox.is_empty() {
+                // .eml dumped directly under the account root has no mailbox.
+                continue;
+            }
+            let size = std::fs::metadata(&path)?.len() as usize;
+            out.push(EmlEntry {
+                mailbox,
+                uid,
+                path,
+                size,
+            });
+        }
+    }
+    Ok(out)
+}
+
 async fn migrate_account_files(
     db: &Database,
     account_id: i64,
@@ -155,40 +217,17 @@ async fn migrate_account_files(
         return Ok(0);
     }
 
+    let entries = collect_emls(&account_dir)?;
+    let mut per_mailbox: BTreeMap<String, usize> = BTreeMap::new();
     let mut total = 0usize;
-    for mailbox_entry in std::fs::read_dir(&account_dir)
-        .with_context(|| format!("reading {}", account_dir.display()))?
-    {
-        let mailbox_entry = mailbox_entry?;
-        if !mailbox_entry.file_type()?.is_dir() {
-            continue;
-        }
-        let mailbox = mailbox_entry.file_name().to_string_lossy().into_owned();
-        let mailbox_dir = mailbox_entry.path();
-
-        let mut mailbox_count = 0usize;
-        for eml in std::fs::read_dir(&mailbox_dir)? {
-            let eml = eml?;
-            if !eml.file_type()?.is_file() {
-                continue;
-            }
-            let path = eml.path();
-            if path.extension().and_then(|s| s.to_str()) != Some("eml") {
-                continue;
-            }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            let Ok(uid) = stem.parse::<u32>() else {
-                continue;
-            };
-            let size = std::fs::metadata(&path)?.len() as usize;
-            db.mark_email_fetched(account_id, &mailbox, uid, &path, size)
-                .await?;
-            mailbox_count += 1;
-            total += 1;
-        }
-        println!("  {email}/{mailbox}: {mailbox_count} files");
+    for e in entries {
+        *per_mailbox.entry(e.mailbox.clone()).or_default() += 1;
+        db.mark_email_fetched(account_id, &e.mailbox, e.uid, &e.path, e.size)
+            .await?;
+        total += 1;
+    }
+    for (mailbox, count) in per_mailbox {
+        println!("  {email}/{mailbox}: {count} files");
     }
     Ok(total)
 }
