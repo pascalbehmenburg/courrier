@@ -58,7 +58,8 @@ FROM debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        libssl3 && \
+        libssl3 \
+        wget && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root user, fixed UID/GID so host bind mounts can be chowned predictably.
