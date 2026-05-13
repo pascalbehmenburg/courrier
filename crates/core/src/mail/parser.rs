@@ -56,6 +56,7 @@ impl ParsedMail {
             forwarded_from: analysis.forwarded_from,
             forwarded_from_domain: analysis.forwarded_from_domain,
             original_sender_domain: analysis.original_sender_domain,
+            original_sender_addr: analysis.original_sender_addr,
             size_bytes: body_size,
         }
     }

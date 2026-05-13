@@ -55,9 +55,9 @@ export default function Analytics() {
     queryKey: ["a", "mailboxes", scope],
     queryFn: () => api.mailboxes(accountId),
   });
-  const forwarding = useQuery({
-    queryKey: ["a", "forwarding", scope],
-    queryFn: () => api.forwarding(accountId, 50),
+  const forwardingTree = useQuery({
+    queryKey: ["a", "forwarding-tree", scope],
+    queryFn: () => api.forwardingTree(accountId),
   });
 
   return (
@@ -179,31 +179,124 @@ export default function Analytics() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Forwarded — top forwarders</CardTitle>
+            <CardTitle className="text-sm">Forwarded mail</CardTitle>
           </CardHeader>
           <CardContent>
-            {(forwarding.data?.by_forwarder.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No forwarded mail detected yet.
-              </p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {forwarding.data!.by_forwarder.slice(0, 12).map((row) => (
-                  <li
-                    key={row.key}
-                    className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/40"
-                  >
-                    <span className="font-mono text-xs">{row.key}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {row.count.toLocaleString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ForwardingTreeView tree={forwardingTree.data} />
           </CardContent>
         </Card>
       </div>
     </div>
+  );
+}
+
+import { ChevronRight } from "lucide-react";
+import type { ForwarderTree, ForwarderNode, OriginDomainNode } from "@/types/api";
+
+function ForwardingTreeView({ tree }: { tree: ForwarderTree | undefined }) {
+  const [openForwarders, setOpenForwarders] = useState<Set<string>>(new Set());
+  const [openDomains, setOpenDomains] = useState<Set<string>>(new Set());
+
+  if (!tree || tree.forwarders.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No forwarded mail detected yet.
+      </p>
+    );
+  }
+
+  const toggle = (set: Set<string>, key: string) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  };
+
+  return (
+    <ul className="space-y-1 text-sm">
+      {tree.forwarders.map((fwd: ForwarderNode) => {
+        const fwdKey = fwd.forwarder;
+        const isOpen = openForwarders.has(fwdKey);
+        return (
+          <li key={fwdKey} className="rounded-md hover:bg-muted/30">
+            <button
+              type="button"
+              onClick={() =>
+                setOpenForwarders((s) => toggle(s, fwdKey))
+              }
+              className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left"
+            >
+              <span className="flex min-w-0 items-center gap-1">
+                <ChevronRight
+                  className={`h-3 w-3 shrink-0 transition-transform ${
+                    isOpen ? "rotate-90" : ""
+                  }`}
+                />
+                <span className="truncate font-mono text-xs">{fwdKey}</span>
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {fwd.total.toLocaleString()}
+              </span>
+            </button>
+            {isOpen && (
+              <ul className="ml-5 space-y-1 border-l border-border/40 pl-2">
+                {fwd.domains.map((dom: OriginDomainNode) => {
+                  const domKey = `${fwdKey}|${dom.domain}`;
+                  const domOpen = openDomains.has(domKey);
+                  const hasAddrs = dom.addresses.length > 0;
+                  return (
+                    <li key={domKey} className="rounded-md hover:bg-muted/40">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          hasAddrs && setOpenDomains((s) => toggle(s, domKey))
+                        }
+                        className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left"
+                        disabled={!hasAddrs}
+                      >
+                        <span className="flex min-w-0 items-center gap-1">
+                          {hasAddrs ? (
+                            <ChevronRight
+                              className={`h-3 w-3 shrink-0 transition-transform ${
+                                domOpen ? "rotate-90" : ""
+                              }`}
+                            />
+                          ) : (
+                            <span className="w-3 shrink-0" />
+                          )}
+                          <span className="truncate text-xs">
+                            {dom.domain}
+                          </span>
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {dom.count.toLocaleString()}
+                        </span>
+                      </button>
+                      {domOpen && hasAddrs && (
+                        <ul className="ml-5 space-y-0.5 border-l border-border/40 pl-2">
+                          {dom.addresses.map((a) => (
+                            <li
+                              key={a.key}
+                              className="flex items-center justify-between gap-2 px-2 py-0.5"
+                            >
+                              <span className="truncate font-mono text-[11px] text-muted-foreground">
+                                {a.key}
+                              </span>
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                {a.count.toLocaleString()}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

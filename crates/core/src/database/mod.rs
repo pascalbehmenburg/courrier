@@ -40,6 +40,22 @@ impl Database {
         for stmt in schema::SCHEMA {
             conn.execute(stmt, [])?;
         }
+        // Idempotent column adds for pre-existing DBs. ADD COLUMN errors if
+        // the column already exists, so probe first.
+        let has_col = |table: &str, col: &str| -> Result<bool> {
+            let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+            let cols: Vec<String> = stmt
+                .query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(cols.iter().any(|c| c == col))
+        };
+        if !has_col("messages", "original_sender_addr")? {
+            conn.execute(
+                "ALTER TABLE messages ADD COLUMN original_sender_addr TEXT",
+                [],
+            )?;
+        }
         Ok(())
     }
 

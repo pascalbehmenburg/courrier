@@ -3,7 +3,9 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use courrier_core::analytics::{CountedString, DateBucket, ForwardingBreakdown, OverviewStats};
+use courrier_core::analytics::{
+    CountedString, DateBucket, ForwarderTree, ForwardingBreakdown, OverviewStats,
+};
 use serde::Deserialize;
 
 use crate::app_state::AppState;
@@ -79,6 +81,18 @@ pub async fn forwarding(
     state
         .db
         .forwarding_breakdown(q.account_id, q.limit.clamp(1, 200))
+        .await
+        .map(Json)
+        .map_err(server_error)
+}
+
+pub async fn forwarding_tree(
+    State(state): State<AppState>,
+    Query(q): Query<ScopeQuery>,
+) -> Result<Json<ForwarderTree>, StatusCode> {
+    state
+        .db
+        .forwarder_tree(q.account_id, 30, 25, 10)
         .await
         .map(Json)
         .map_err(server_error)

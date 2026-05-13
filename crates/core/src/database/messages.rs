@@ -35,6 +35,7 @@ pub struct Message {
     pub forwarded_from: Option<String>,
     pub forwarded_from_domain: Option<String>,
     pub original_sender_domain: Option<String>,
+    pub original_sender_addr: Option<String>,
     pub size_bytes: i64,
 }
 
@@ -70,6 +71,7 @@ pub struct MessageRow {
     pub forwarded_from: Option<String>,
     pub forwarded_from_domain: Option<String>,
     pub original_sender_domain: Option<String>,
+    pub original_sender_addr: Option<String>,
     pub size_bytes: i64,
 }
 
@@ -96,6 +98,7 @@ fn row_to_message(row: &Row<'_>) -> rusqlite::Result<Message> {
         forwarded_from: row.get("forwarded_from")?,
         forwarded_from_domain: row.get("forwarded_from_domain")?,
         original_sender_domain: row.get("original_sender_domain")?,
+        original_sender_addr: row.get("original_sender_addr")?,
         size_bytes: row.get("size_bytes")?,
     })
 }
@@ -169,8 +172,8 @@ impl Database {
                     subject, from_addr, from_name, to_addrs, cc_addrs,
                     date_utc, body_text,
                     is_forwarded, forwarded_from, forwarded_from_domain,
-                    original_sender_domain, size_bytes
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                    original_sender_domain, original_sender_addr, size_bytes
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                 ON CONFLICT(fetched_email_id) DO UPDATE SET
                     subject = excluded.subject,
                     from_addr = excluded.from_addr,
@@ -183,6 +186,7 @@ impl Database {
                     forwarded_from = excluded.forwarded_from,
                     forwarded_from_domain = excluded.forwarded_from_domain,
                     original_sender_domain = excluded.original_sender_domain,
+                    original_sender_addr = excluded.original_sender_addr,
                     size_bytes = excluded.size_bytes",
                 params![
                     row.fetched_email_id,
@@ -200,6 +204,7 @@ impl Database {
                     row.forwarded_from,
                     row.forwarded_from_domain,
                     row.original_sender_domain,
+                    row.original_sender_addr,
                     row.size_bytes,
                 ],
             )?;

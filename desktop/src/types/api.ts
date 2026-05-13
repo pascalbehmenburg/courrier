@@ -85,6 +85,7 @@ export interface Message extends MessageSummary {
   body_text: string | null;
   forwarded_from_domain: string | null;
   original_sender_domain: string | null;
+  original_sender_addr: string | null;
 }
 
 export interface SearchHit {
@@ -128,4 +129,20 @@ export interface ForwarderOriginRow {
 export interface ForwardingBreakdown {
   by_forwarder: CountedString[];
   by_forwarder_then_origin: ForwarderOriginRow[];
+}
+
+export interface OriginDomainNode {
+  domain: string;
+  count: number;
+  addresses: CountedString[];
+}
+
+export interface ForwarderNode {
+  forwarder: string;
+  total: number;
+  domains: OriginDomainNode[];
+}
+
+export interface ForwarderTree {
+  forwarders: ForwarderNode[];
 }

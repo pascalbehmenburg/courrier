@@ -59,6 +59,7 @@ pub const SCHEMA: &[&str] = &[
         forwarded_from TEXT,
         forwarded_from_domain TEXT,
         original_sender_domain TEXT,
+        original_sender_addr TEXT,
         size_bytes INTEGER NOT NULL DEFAULT 0
     )",
     "CREATE INDEX IF NOT EXISTS idx_fetched_emails_account

@@ -8,6 +8,7 @@ import type {
   CountedString,
   DateBucket,
   FetchStatus,
+  ForwarderTree,
   ForwardingBreakdown,
   Message,
   MessageSummary,
@@ -132,6 +133,14 @@ export const api = {
     const sp = new URLSearchParams({ limit: String(limit) });
     if (account_id != null) sp.set("account_id", String(account_id));
     return request<ForwardingBreakdown>(`/api/analytics/forwarding?${sp}`);
+  },
+  forwardingTree: (account_id?: number) => {
+    const sp = new URLSearchParams();
+    if (account_id != null) sp.set("account_id", String(account_id));
+    const qs = sp.toString();
+    return request<ForwarderTree>(
+      `/api/analytics/forwarding-tree${qs ? `?${qs}` : ""}`,
+    );
   },
   timeline: (account_id?: number, days = 30) => {
     const sp = new URLSearchParams({ days: String(days) });

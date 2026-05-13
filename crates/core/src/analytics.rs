@@ -48,6 +48,28 @@ pub struct ForwarderOriginRow {
     pub count: i64,
 }
 
+/// Nested forwarder → domain → address breakdown for the UI drill-down.
+#[derive(Debug, Clone, Serialize)]
+pub struct ForwarderTree {
+    pub forwarders: Vec<ForwarderNode>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ForwarderNode {
+    /// `forwarded_from` if known, otherwise the forwarder *domain*
+    /// (envelope-only SRS hits with no matching To: address).
+    pub forwarder: String,
+    pub total: i64,
+    pub domains: Vec<OriginDomainNode>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OriginDomainNode {
+    pub domain: String,
+    pub count: i64,
+    pub addresses: Vec<CountedString>,
+}
+
 impl Database {
     pub async fn overview_stats(&self, account_id: Option<i64>) -> Result<OverviewStats> {
         self.run(move |conn| {
@@ -200,6 +222,115 @@ impl Database {
             by_forwarder,
             by_forwarder_then_origin,
         })
+    }
+
+    /// Nested forwarder → domain → address breakdown. Caps at
+    /// (max_forwarders, max_domains_per_fwd, max_addrs_per_domain) to
+    /// keep the payload bounded. The forwarder key is `forwarded_from`
+    /// if set, falling back to `forwarded_from_domain`.
+    pub async fn forwarder_tree(
+        &self,
+        account_id: Option<i64>,
+        max_forwarders: i64,
+        max_domains_per_forwarder: i64,
+        max_addrs_per_domain: i64,
+    ) -> Result<ForwarderTree> {
+        self.run(move |conn| {
+            let scope = if account_id.is_some() {
+                " AND account_id = ?1"
+            } else {
+                ""
+            };
+            // One pass: pull (forwarder_key, domain, address, count) for
+            // every (forwarder, original_sender_domain, original_sender_addr)
+            // tuple. Domain falls back to substring of address when only
+            // address is present and vice-versa.
+            let sql = format!(
+                "SELECT
+                    COALESCE(forwarded_from, forwarded_from_domain) AS forwarder,
+                    COALESCE(
+                        original_sender_domain,
+                        LOWER(SUBSTR(original_sender_addr, INSTR(original_sender_addr, '@') + 1))
+                    ) AS domain,
+                    LOWER(original_sender_addr) AS addr,
+                    COUNT(*) AS c
+                 FROM messages
+                 WHERE is_forwarded = 1
+                   AND (forwarded_from IS NOT NULL OR forwarded_from_domain IS NOT NULL){scope}
+                 GROUP BY forwarder, domain, addr",
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            type Triple = (Option<String>, Option<String>, Option<String>, i64);
+            let map = |row: &rusqlite::Row<'_>| -> rusqlite::Result<Triple> {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            };
+            let rows: Vec<Triple> = match account_id {
+                Some(a) => stmt
+                    .query_map(params![a], map)?
+                    .collect::<Result<Vec<_>, _>>()?,
+                None => stmt.query_map([], map)?.collect::<Result<Vec<_>, _>>()?,
+            };
+
+            // forwarder -> domain -> addr -> count
+            use std::collections::BTreeMap;
+            let mut tree: BTreeMap<String, BTreeMap<String, BTreeMap<Option<String>, i64>>> =
+                BTreeMap::new();
+            for (fwd, dom, addr, c) in rows {
+                let Some(fwd) = fwd else { continue };
+                let dom = dom.unwrap_or_else(|| "(unknown)".to_string());
+                *tree
+                    .entry(fwd)
+                    .or_default()
+                    .entry(dom)
+                    .or_default()
+                    .entry(addr)
+                    .or_insert(0) += c;
+            }
+
+            // Materialise + sort + cap.
+            let mut forwarders: Vec<ForwarderNode> = tree
+                .into_iter()
+                .map(|(forwarder, dom_map)| {
+                    let mut domains: Vec<OriginDomainNode> = dom_map
+                        .into_iter()
+                        .map(|(domain, addr_map)| {
+                            let domain_total: i64 = addr_map.values().sum();
+                            let mut addresses: Vec<CountedString> = addr_map
+                                .into_iter()
+                                .filter_map(|(addr, count)| {
+                                    addr.map(|key| CountedString { key, count })
+                                })
+                                .collect();
+                            addresses.sort_by(|a, b| b.count.cmp(&a.count));
+                            addresses.truncate(max_addrs_per_domain as usize);
+                            OriginDomainNode {
+                                domain,
+                                count: domain_total,
+                                addresses,
+                            }
+                        })
+                        .collect();
+                    domains.sort_by(|a, b| b.count.cmp(&a.count));
+                    let total: i64 = domains.iter().map(|d| d.count).sum();
+                    domains.truncate(max_domains_per_forwarder as usize);
+                    ForwarderNode {
+                        forwarder,
+                        total,
+                        domains,
+                    }
+                })
+                .collect();
+            forwarders.sort_by(|a, b| b.total.cmp(&a.total));
+            forwarders.truncate(max_forwarders as usize);
+
+            Ok(ForwarderTree { forwarders })
+        })
+        .await
     }
 
     pub async fn messages_per_day(

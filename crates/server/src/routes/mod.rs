@@ -46,6 +46,10 @@ pub fn router(state: AppState) -> Router {
             get(analytics::top_sender_domains),
         )
         .route("/api/analytics/forwarding", get(analytics::forwarding))
+        .route(
+            "/api/analytics/forwarding-tree",
+            get(analytics::forwarding_tree),
+        )
         .route("/api/analytics/timeline", get(analytics::timeline))
         .route("/api/analytics/mailboxes", get(analytics::mailboxes))
         .layer(middleware::from_fn(require_xhr_for_writes));
