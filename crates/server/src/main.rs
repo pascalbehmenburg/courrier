@@ -38,10 +38,29 @@ async fn main() -> Result<()> {
     ));
 
     // Backfill messages for any existing .eml files left over from older
-    // versions or DB restores.
-    let backfilled = coordinator.backfill_parser(1000).await?;
-    if backfilled > 0 {
-        info!("Backfilled {} parsed message(s) at startup", backfilled);
+    // versions or DB restores. Drains in the background so a large legacy
+    // tree (tens of thousands of .eml) doesn't block the HTTP listener.
+    {
+        let coord = Arc::clone(&coordinator);
+        tokio::spawn(async move {
+            let mut total = 0usize;
+            loop {
+                match coord.backfill_parser(1000).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        total += n;
+                        info!("Backfill: parsed {} (running total {})", n, total);
+                    }
+                    Err(e) => {
+                        tracing::error!("Backfill batch failed: {:?}", e);
+                        break;
+                    }
+                }
+            }
+            if total > 0 {
+                info!("Backfill complete: {} message(s) parsed", total);
+            }
+        });
     }
 
     coordinator.spawn_scheduler();
