@@ -4,8 +4,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use mailparse::{addrparse, MailHeaderMap, ParsedMail as MpParsed};
 
-use crate::database::MessageRow;
-use crate::mail::forwarding;
+use crate::database::{MessageRow, SenderObservation};
+use crate::mail::{forwarding, unsubscribe};
 
 #[derive(Debug, Clone)]
 pub struct Address {
@@ -29,6 +29,21 @@ impl ParsedMail {
     pub fn from_bytes(raw: &[u8]) -> Result<Self> {
         let parsed = mailparse::parse_mail(raw)?;
         Ok(extract(&parsed))
+    }
+
+    /// Build a sender observation from this mail's From + List-Unsubscribe
+    /// headers. Returns None if the From: address is missing.
+    pub fn sender_observation(&self) -> Option<SenderObservation> {
+        let from = self.from.as_ref()?;
+        let unsub = unsubscribe::extract(self);
+        Some(SenderObservation {
+            address: from.email.clone(),
+            display_name: from.name.clone(),
+            seen_at: self.date_utc.unwrap_or_else(chrono::Utc::now),
+            unsub_one_click_url: unsub.one_click_url,
+            unsub_mailto: unsub.mailto,
+            unsub_web_url: unsub.web_url,
+        })
     }
 
     pub fn into_row(self, fetched_email_id: i64, account_id: i64, mailbox: String) -> MessageRow {

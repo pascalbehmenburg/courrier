@@ -158,9 +158,15 @@ impl SyncCoordinator {
             };
             match crate::mail::ParsedMail::from_bytes(&raw) {
                 Ok(parsed) => {
+                    let sender_obs = parsed.sender_observation();
                     let row = parsed.into_row(p.fetched_email_id, p.account_id, p.mailbox);
                     if let Err(e) = self.db.upsert_message(row).await {
                         warn!("Backfill upsert failed: {:?}", e);
+                    }
+                    if let Some(obs) = sender_obs {
+                        if let Err(e) = self.db.upsert_sender(obs).await {
+                            warn!("Backfill sender upsert failed: {:?}", e);
+                        }
                     }
                 }
                 Err(e) => warn!(file = %p.file_path, "Backfill parse failed: {:?}", e),

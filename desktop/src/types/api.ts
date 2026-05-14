@@ -146,3 +146,32 @@ export interface ForwarderNode {
 export interface ForwarderTree {
   forwarders: ForwarderNode[];
 }
+
+export interface Sender {
+  id: number;
+  address: string;
+  display_name: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  message_count: number;
+  unsub_one_click_url: string | null;
+  unsub_mailto: string | null;
+  unsub_web_url: string | null;
+  unsubscribed_at: string | null;
+  unsubscribed_method: string | null;
+  unsubscribe_result: string | null;
+}
+
+export type SubscriptionKind =
+  | "one_click"
+  | "manual"
+  | "other"
+  | "unsubscribed"
+  | "all";
+
+export interface UnsubscribeOutcome {
+  sender_id: number;
+  address: string;
+  ok: boolean;
+  status: string;
+}

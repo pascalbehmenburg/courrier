@@ -71,6 +71,23 @@ pub const SCHEMA: &[&str] = &[
         ON messages(account_id, is_forwarded, forwarded_from)",
     "CREATE INDEX IF NOT EXISTS idx_fetch_runs_account
         ON fetch_runs(account_id, started_at DESC)",
+    // One row per distinct sender we've ever seen. Populated by the
+    // parser; the unsubscribe flow reads + mutates this directly.
+    "CREATE TABLE IF NOT EXISTS senders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        display_name TEXT,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        unsub_one_click_url TEXT,
+        unsub_mailto TEXT,
+        unsub_web_url TEXT,
+        unsubscribed_at TEXT,
+        unsubscribed_method TEXT,
+        unsubscribe_result TEXT
+    )",
+    "CREATE INDEX IF NOT EXISTS idx_senders_last_seen ON senders(last_seen_at DESC)",
     // FTS5 virtual table mirroring messages — populated via triggers below.
     "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
         subject, from_addr, from_name, to_addrs, body_text,

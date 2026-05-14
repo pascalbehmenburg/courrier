@@ -190,9 +190,15 @@ async fn fetch_mailbox(
         // block subsequent messages — log and move on.
         match ParsedMail::from_bytes(&raw) {
             Ok(parsed) => {
+                let sender_obs = parsed.sender_observation();
                 let row = parsed.into_row(fetched_email_id, account.id, mailbox.to_string());
                 if let Err(e) = db.upsert_message(row).await {
                     warn!(uid, "Failed to persist parsed message: {:?}", e);
+                }
+                if let Some(obs) = sender_obs {
+                    if let Err(e) = db.upsert_sender(obs).await {
+                        warn!(uid, "Failed to upsert sender: {:?}", e);
+                    }
                 }
             }
             Err(e) => warn!(uid, "Failed to parse message: {:?}", e),

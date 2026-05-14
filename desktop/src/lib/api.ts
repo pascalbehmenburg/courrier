@@ -10,6 +10,9 @@ import type {
   FetchStatus,
   ForwarderTree,
   ForwardingBreakdown,
+  Sender,
+  SubscriptionKind,
+  UnsubscribeOutcome,
   Message,
   MessageSummary,
   Provider,
@@ -151,4 +154,24 @@ export const api = {
     request<CountedString[]>(
       `/api/analytics/mailboxes${account_id ? `?account_id=${account_id}` : ""}`,
     ),
+
+  // Subscriptions
+  listSubscriptions: (kind: SubscriptionKind = "one_click", window_days = 180) => {
+    const sp = new URLSearchParams({ kind, window_days: String(window_days) });
+    return request<Sender[]>(`/api/subscriptions?${sp}`);
+  },
+  bulkUnsubscribe: (ids: number[]) =>
+    request<UnsubscribeOutcome[]>("/api/subscriptions/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  markUnsubscribed: (id: number, method: string) =>
+    request<void>(`/api/subscriptions/${id}/mark-unsubscribed`, {
+      method: "POST",
+      body: JSON.stringify({ method }),
+    }),
+  resubscribe: (id: number) =>
+    request<void>(`/api/subscriptions/${id}/resubscribe`, {
+      method: "POST",
+    }),
 };

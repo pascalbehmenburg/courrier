@@ -13,6 +13,7 @@ import Messages from "@/pages/Messages";
 import MessageView from "@/pages/MessageView";
 import SearchPage from "@/pages/Search";
 import Analytics from "@/pages/Analytics";
+import Subscriptions from "@/pages/Subscriptions";
 import SettingsPage from "@/pages/Settings";
 
 const queryClient = new QueryClient({
@@ -39,6 +40,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
             <Route path="messages/:id" element={<MessageView />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

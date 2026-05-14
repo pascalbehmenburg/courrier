@@ -3,6 +3,7 @@ mod analytics;
 mod messages;
 mod providers;
 mod search;
+mod subscriptions;
 mod sync;
 
 use axum::{
@@ -52,6 +53,19 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/analytics/timeline", get(analytics::timeline))
         .route("/api/analytics/mailboxes", get(analytics::mailboxes))
+        .route("/api/subscriptions", get(subscriptions::list))
+        .route(
+            "/api/subscriptions/unsubscribe",
+            post(subscriptions::bulk_unsubscribe),
+        )
+        .route(
+            "/api/subscriptions/:id/mark-unsubscribed",
+            post(subscriptions::mark_unsubscribed),
+        )
+        .route(
+            "/api/subscriptions/:id/resubscribe",
+            post(subscriptions::resubscribe),
+        )
         .layer(middleware::from_fn(require_xhr_for_writes));
 
     Router::new()

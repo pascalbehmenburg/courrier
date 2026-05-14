@@ -12,6 +12,7 @@ pub mod mail;
 pub mod providers;
 pub mod search;
 pub mod settings;
+pub mod subscriptions;
 pub mod sync;
 
 pub use database::Database;

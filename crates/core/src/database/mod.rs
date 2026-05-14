@@ -6,10 +6,12 @@ mod accounts;
 mod fetch_runs;
 mod messages;
 mod schema;
+mod senders;
 
 pub use accounts::{Account, AccountInput};
 pub use fetch_runs::{FetchRun, FetchRunStatus};
 pub use messages::{Message, MessageRow, MessageSummary};
+pub use senders::{Sender, SenderKind, SenderObservation};
 
 use anyhow::Result;
 use parking_lot::Mutex;

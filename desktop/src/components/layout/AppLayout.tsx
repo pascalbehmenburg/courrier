@@ -3,6 +3,7 @@ import {
   Inbox,
   LayoutDashboard,
   Mail,
+  MailX,
   Search,
   Settings,
   Sparkles,
@@ -17,6 +18,7 @@ const NAV = [
   { to: "/messages", icon: Mail, label: "Messages" },
   { to: "/search", icon: Search, label: "Search" },
   { to: "/analytics", icon: Sparkles, label: "Analytics" },
+  { to: "/subscriptions", icon: MailX, label: "Subscriptions" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ] as const;
 
