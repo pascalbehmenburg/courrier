@@ -27,7 +27,7 @@ RUN pnpm build
 ###############################################################################
 # Stage 2 — Rust server
 ###############################################################################
-FROM rust:1.84-bookworm AS rust-builder
+FROM rust:1.85-bookworm AS rust-builder
 
 WORKDIR /build
 
